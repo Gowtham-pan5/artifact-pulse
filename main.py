@@ -4,8 +4,29 @@ from __future__ import annotations
 
 import logging
 
-from colorama import Fore, Style, init
-from tabulate import tabulate
+try:
+    from colorama import Fore, Style, init
+except ImportError:
+    class MockColor:
+        def __getattr__(self, name: str) -> str:
+            return ""
+    Fore = MockColor()
+    Style = MockColor()
+    def init(*args, **kwargs) -> None:
+        pass
+
+try:
+    from tabulate import tabulate
+except ImportError:
+    def tabulate(data, headers=None, tablefmt=None) -> str:
+        out = []
+        if headers:
+            out.append(" | ".join(str(h) for h in headers))
+            out.append("-" * 40)
+        for row in data:
+            out.append(" | ".join(str(item) for item in row))
+        return "\n".join(out)
+
 
 from core.antiforensic_detector import AntiForensicDetector
 from core.correlation_engine import CorrelationEngine
