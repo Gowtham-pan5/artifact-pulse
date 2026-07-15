@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Artifact-Pulse</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .ml-panel { margin: 16px 0; }
+    .ml-panel .card { margin-bottom: 12px; }
+    .bar-track { background: #1c2333; border-radius: 8px; height: 18px; overflow: hidden; margin: 6px 0; }
+    .bar-fill { height: 100%; border-radius: 8px; }
+    .sev-critical { background: #f85149; }
+    .sev-high { background: #f0883e; }
+    .sev-medium { background: #d29922; }
+    .sev-low { background: #3fb950; }
+    .feature-row { margin: 8px 0; }
+    .feature-label { font-size: 12px; display: flex; justify-content: space-between; }
+    .exp-row { cursor: pointer; }
+    .exp-detail { display: none; padding: 8px; background: #101621; border-left: 3px solid #00e5ff; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="logo">Artifact-Pulse</div>
+    <nav><a href="/">Home</a><a href="/dashboard">Dashboard</a></nav>
+  </header>
+  <section class="hero">
+    <h1>Windows Endpoint Forensics, Correlated</h1>
+    <button onclick="startExtraction()">Start Extraction</button>
+    <button onclick="verifyChain()">Verify Integrity</button>
+  </section>
+  <section id="progressWrap" class="card hidden">
+    <div class="progress"><div id="progressBar"></div></div>
+    <p id="progressText">Waiting</p>
+  </section>
+  <section class="stats">
+    <div class="card"><h3>Total Artifacts</h3><p id="sTotal">0</p></div>
+    <div class="card"><h3>AF Detections</h3><p id="sAF">0</p></div>
+    <div class="card"><h3>High Risk</h3><p id="sHigh">0</p></div>
+    <div class="card"><h3>Clusters</h3><p id="sCluster">0</p></div>
+  </section>
+
+  <section id="mlPanel" class="ml-panel hidden">
+    <div class="card">
+      <h3>Attack Type Breakdown</h3>
+      <div id="attackBreakdownWrap">No ML output yet.</div>
+    </div>
+    <div class="card">
+      <h3>Feature Importance (Top 10)</h3>
+      <div id="featureImportanceWrap">No feature importance available.</div>
+    </div>
+    <div class="card">
+      <h3>Top Anomalies with Explanations</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Artifact ID</th><th>Attack Type</th><th>Risk</th>
+            <th>Severity</th><th>Top Reason</th>
+          </tr>
+        </thead>
+        <tbody id="explanationsBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="filters">
+    <button onclick="loadArtifacts('all')">All</button>
+    <button onclick="loadArtifacts('filesystem')">Filesystem</button>
+    <button onclick="loadArtifacts('system_events')">Event Logs</button>
+    <button onclick="loadArtifacts('process_snapshot')">Processes</button>
+  </section>
+  <section class="card">
+    <table>
+      <thead><tr><th>ID</th><th>Layer</th><th>Type</th><th>Timestamp</th><th>Risk</th></tr></thead>
+      <tbody id="artifactBody"></tbody>
+    </table>
+  </section>
+  <section class="actions">
+    <button id="genBtn" onclick="generateReport()" disabled>Generate Report</button>
+    <button id="dlBtn" onclick="downloadReport()" disabled>Download PDF</button>
+  </section>
+  <script src="/static/script.js"></script>
+  <script>
+    const _oldPollStatus = window.pollStatus;
+
+    window.pollStatus = async function pollStatusExtended() {
+      await _oldPollStatus();
+      try {
+        const res = await fetch('/api/extraction/status');
+        const data = await res.json();
+        if (!data.running && (data.progress || 0) >= 100) {
+          document.getElementById('mlPanel').classList.remove('hidden');
+          await loadMLBreakdown();
+          await loadFeatureImportance();
+          await loadExplanations();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    async function loadMLBreakdown() {
+      const res = await fetch('/api/ml/attack-breakdown');
+      const data = await res.json();
+      renderBarChart(data || {});
+    }
+
+    async function loadFeatureImportance() {
+      const res = await fetch('/api/ml/feature-importance');
+      const data = await res.json();
+      renderFeatureImportance(Array.isArray(data) ? data.slice(0, 10) : []);
+    }
+
+    async function loadExplanations() {
+      const res = await fetch('/api/ml/explanations');
+      const data = await res.json();
+      const body = document.getElementById('explanationsBody');
+      body.innerHTML = '';
+      (Array.isArray(data) ? data : []).slice(0, 10).forEach((item, idx) => {
+        const reasons = (item.reasons || []).map((r) => `<li>${r}</li>`).join('');
+        const fcon = (item.feature_contributions || []).slice(0, 5).map(
+          (f) => `<li>${f.feature}: ${f.weight} — ${f.explanation}</li>`
+        ).join('');
+        const tr = document.createElement('tr');
+        tr.className = 'exp-row';
+        tr.innerHTML = `<td>${item.artifact_id || ''}</td>
+          <td>${item.attack_type || ''}</td>
+          <td>${Math.round((item.combined_risk || 0) * 100)}%</td>
+          <td>${item.severity || ''}</td>
+          <td>${(item.reasons || [''])[0]}</td>`;
+        const detail = document.createElement('tr');
+        detail.innerHTML = `<td colspan="5">
+          <div id="exp-${idx}" class="exp-detail">
+            <p>${item.summary || ''}</p>
+            <p><strong>Reasons</strong></p><ol>${reasons}</ol>
+            <p><strong>Feature Contributions</strong></p><ol>${fcon}</ol>
+          </div>
+        </td>`;
+        tr.addEventListener('click', () => {
+          const box = detail.querySelector('.exp-detail');
+          box.style.display = box.style.display === 'block' ? 'none' : 'block';
+        });
+        body.appendChild(tr);
+        body.appendChild(detail);
+      });
+    }
+
+    function renderBarChart(data) {
+      const wrap = document.getElementById('attackBreakdownWrap');
+      const entries = Object.entries(data || {});
+      if (!entries.length) {
+        wrap.innerHTML = 'No attack breakdown available.';
+        return;
+      }
+      const total = entries.reduce((s, [, c]) => s + Number(c || 0), 0) || 1;
+      wrap.innerHTML = entries.map(([k, c]) => {
+        const pct = Math.max(2, Math.round((Number(c || 0) / total) * 100));
+        const sev = k.includes('TAMPERING') ? 'sev-critical'
+          : (k.includes('MALICIOUS') || k.includes('EXFILTRATION')) ? 'sev-high'
+          : (k.includes('ANOMALOUS') || k.includes('SUSPICIOUS')) ? 'sev-medium'
+          : 'sev-low';
+        return `<div>${k}: ${c}
+          <div class="bar-track"><div class="bar-fill ${sev}" style="width:${pct}%"></div></div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderFeatureImportance(data) {
+      const wrap = document.getElementById('featureImportanceWrap');
+      if (!data.length) {
+        wrap.innerHTML = 'No feature importance available.';
+        return;
+      }
+      const maxImp = Math.max(...data.map((d) => Number(d.importance || 0)), 0.0001);
+      wrap.innerHTML = data.map((d) => {
+        const pct = Math.round((Number(d.importance || 0) / maxImp) * 100);
+        return `<div class="feature-row" title="${d.explanation || ''}">
+          <div class="feature-label"><span>${d.feature}</span><span>${d.importance}</span></div>
+          <div class="bar-track"><div class="bar-fill sev-low" style="width:${pct}%"></div></div>
+        </div>`;
+      }).join('');
+    }
+  </script>
+</body>
+</html>

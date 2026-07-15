@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Project output and databases
+output/
+*.db
+*.sqlite
+*.log
+report/*.pdf
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.noseids
+
+# IDE and System Files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Frontend build outputs
+artifact-pulse-ui/dist/
+artifact-pulse-ui/.output/
+artifact-pulse-ui/.wrangler/
+artifact-pulse-ui/.tanstack/

@@ -1,0 +1,5 @@
+model_list:
+  - model_name: gemini-2.0-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: AIzaSyAdZaAyogioGtrBqD79aWJuh7V8rYlQbIE
