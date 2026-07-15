@@ -357,8 +357,18 @@ class ProcessBehaviorAnalyzer:
             })
         
         # Print table
-        from tabulate import tabulate
-        print(tabulate(display_data, headers="keys", tablefmt="grid"))
+        try:
+            from tabulate import tabulate
+            print(tabulate(display_data, headers="keys", tablefmt="grid"))
+        except ImportError:
+            if display_data:
+                headers = list(display_data[0].keys())
+                print(" | ".join(headers))
+                print("-" * 60)
+                for row in display_data:
+                    print(" | ".join(str(row[h]) for h in headers))
+            else:
+                print("No data available")
         
         print(f"\nTotal Anomalies: {len(self.anomalies)}")
         if len(self.anomalies) > 10 and not include_all:
