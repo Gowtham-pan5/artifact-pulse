@@ -36,7 +36,8 @@ from core.filesystem_extractor import FilesystemExtractor
 from core.ml_scorer import MLScorer
 from core.process_extractor import ProcessExtractor
 from database.db_manager import DBManager
-from web.app import app
+
+# Flask app import is deferred to the execution block to allow running the CLI without Web dependencies
 
 logger = logging.getLogger(__name__)
 
@@ -79,4 +80,12 @@ def run_cli_pipeline() -> None:
 
 if __name__ == "__main__":
     run_cli_pipeline()
-    app.run(debug=False, host="127.0.0.1", port=5000)
+    try:
+        from web.app import app
+        app.run(debug=False, host="127.0.0.1", port=5000)
+    except ImportError as e:
+        print(f"\n[!] Flask Web Dashboard failed to start: {e}")
+        print("Please activate your virtual environment or install dependencies first:")
+        print("    .\\.venv\\Scripts\\Activate.ps1")
+        print("    pip install -r requirements.txt\n")
+
