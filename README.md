@@ -28,8 +28,12 @@ Artifact-Pulse is a Windows endpoint forensic artifact extraction and correlatio
 ```bash
 git clone https://github.com/Gowtham-pan5/artifact-pulse.git
 cd artifact-pulse
-START.bat
+.\START.bat
 ```
+
+> **Windows note:** type `.\START.bat` (not `START.bat`), or simply double-click the
+> `START.bat` file in File Explorer. `START` is a built-in cmd command, so typing
+> `START.bat` bare makes cmd try to open a program named `.bat`.
 
 `START.bat` creates the Python venv, installs backend + frontend dependencies (first run only),
 starts the Flask API on `http://127.0.0.1:5000`, starts the React UI on `http://localhost:5173`,
