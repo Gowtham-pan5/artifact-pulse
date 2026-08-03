@@ -162,8 +162,8 @@ class ModelTrainer:
             k_clusters = max(1, min(k_clusters, n_samples))
             kmeans = KMeans(
                 n_clusters=k_clusters,
-                n_init=20,
-                max_iter=500,
+                n_init=4,
+                max_iter=100,
                 random_state=42,
             )
             kmeans.fit(X_scaled)
