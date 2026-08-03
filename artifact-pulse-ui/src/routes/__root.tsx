@@ -1,8 +1,18 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { AppSidebar } from "../components/AppSidebar";
 import { TopBar } from "../components/TopBar";
 import appCss from "../styles.css?url";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      staleTime: 30000,
+    },
+  },
+});
 
 function NotFoundComponent() {
   return (
@@ -70,27 +80,29 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   return (
-    <div className="flex min-h-screen w-full">
-      <AppSidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar />
-        <main className="flex-1 overflow-x-hidden p-6">
-          <Outlet />
-        </main>
+    <QueryClientProvider client={queryClient}>
+      <div className="flex min-h-screen w-full">
+        <AppSidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar />
+          <main className="flex-1 overflow-x-hidden p-6">
+            <Outlet />
+          </main>
+        </div>
+        <Toaster
+          theme="dark"
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              background: "oklch(0.19 0.014 240)",
+              border: "1px solid oklch(0.28 0.016 240)",
+              color: "oklch(0.93 0.012 200)",
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: "12px",
+            },
+          }}
+        />
       </div>
-      <Toaster
-        theme="dark"
-        position="bottom-right"
-        toastOptions={{
-          style: {
-            background: "oklch(0.19 0.014 240)",
-            border: "1px solid oklch(0.28 0.016 240)",
-            color: "oklch(0.93 0.012 200)",
-            fontFamily: "JetBrains Mono, monospace",
-            fontSize: "12px",
-          },
-        }}
-      />
-    </div>
+    </QueryClientProvider>
   );
 }

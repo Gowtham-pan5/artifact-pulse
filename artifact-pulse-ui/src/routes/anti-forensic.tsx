@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ShieldAlert, Eraser, Trash2, Clock, FileX } from "lucide-react";
 import { PageHeader, Panel } from "./index";
-import { antiForensicEvents, type Severity } from "../lib/mockData";
+import { useAntiForensic, transformAntiForensic, type AntiForensicEvent } from "../hooks/useApi";
+import type { Severity } from "../lib/mockData";
 
 export const Route = createFileRoute("/anti-forensic")({
   head: () => ({ meta: [{ title: "Anti-Forensic Alerts — Artifact-Pulse" }] }),
@@ -23,6 +24,21 @@ const MITRE: Record<string, { id: string; name: string }> = {
 };
 
 function AntiForensicPage() {
+  const { data, isLoading } = useAntiForensic();
+  const antiForensicEvents = data ? transformAntiForensic(data.antiforensic) : [];
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-[1400px] space-y-6">
+        <PageHeader title="Anti-Forensic Alerts" subtitle="Loading..." />
+        <div className="animate-pulse space-y-4">
+          <div className="h-10 bg-muted/50 rounded" />
+          <div className="h-10 bg-muted/50 rounded" />
+        </div>
+      </div>
+    );
+  }
+
   const crit = antiForensicEvents.filter(e => e.severity === "critical").length;
   const high = antiForensicEvents.filter(e => e.severity === "high").length;
 

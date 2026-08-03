@@ -16,46 +16,58 @@ Artifact-Pulse is a Windows endpoint forensic artifact extraction and correlatio
 ### Prerequisites
 *   **Operating System**: Windows 10 or 11
 *   **Python**: Version 3.11+
-*   **Node.js**: Version 18+ (for the frontend UI)
+*   **Node.js**: Version 20.19+ or 22.12+ (Vite 7 requirement — latest LTS recommended)
 
 > [!IMPORTANT]
 > Run your terminal (PowerShell / Command Prompt) as **Administrator** to ensure the platform has permission to read low-level event logs and system registry artifacts.
 
 ---
 
-### Setup Instructions
+### Quick Start — 3 commands
 
-#### 1. Clone the Repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/artifact-pulse.git
+git clone https://github.com/Gowtham-pan5/artifact-pulse.git
 cd artifact-pulse
+START.bat
 ```
 
-#### 2. Backend Installation & Startup
-Activate your virtual environment and install python dependencies:
+`START.bat` creates the Python venv, installs backend + frontend dependencies (first run only),
+starts the Flask API on `http://127.0.0.1:5000`, starts the React UI on `http://localhost:5173`,
+and opens your browser automatically.
+
+### How the flow works
+
+1. Browser opens **http://localhost:5173** (Operations Dashboard).
+2. Go to **Pipeline Runner → run pipeline**. The tool now scans **your own Windows machine**:
+   filesystem, event logs, live processes, and registry — then runs ML anomaly scoring and
+   seals the chain of custody. First run takes a few minutes.
+3. Back on the dashboard you see **your** artifacts, processes, event logs, and risk scores.
+4. Browse **Artifacts / Anomalies / Chain of Custody / Anti-Forensic** — all real data from your device.
+5. **Reports → generate report** produces a forensic PDF (download via the download button).
+
+### Manual setup (instead of START.bat)
+
+Terminal 1 — backend:
 ```powershell
-# Create virtual environment if needed
 python -m venv .venv
-
-# Activate virtual environment
-.\.venv\Scripts\Activate.ps1
-
-# Install requirements
-pip install -r requirements.txt
-
-# Run the backend API server and analysis pipeline
-python main.py
+.\.venv\Scripts\pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m web.app
 ```
-*The backend API server will run at `http://127.0.0.1:5000`.*
+*The API runs at `http://127.0.0.1:5000`. The pipeline starts on demand from the UI button —
+it is **not** run at startup (use `python main.py` only if you want the CLI-only pipeline).*
 
-#### 3. Frontend Installation & Startup
-In a separate terminal (with PowerShell Execution Policy bypassed if needed: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`):
+Terminal 2 — frontend:
 ```powershell
 cd artifact-pulse-ui
 npm install
 npm run dev
 ```
-*The frontend dashboard will run at `http://localhost:5173`.*
+*The frontend runs at `http://localhost:5173` and proxies `/api/*` to the backend.*
+
+### Optional: skip the re-scan
+
+`seed_serve.py` loads the last run's evidence store straight into the API (no re-scan) —
+handy for demos: `.\.venv\Scripts\python.exe seed_serve.py`
 
 ---
 

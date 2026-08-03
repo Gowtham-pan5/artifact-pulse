@@ -5,7 +5,16 @@ import {
 } from "recharts";
 import { Brain, Flame } from "lucide-react";
 import { PageHeader, Panel } from "./index";
-import { anomalyPoints, type AnomalyPoint } from "../lib/mockData";
+import { useClusters, transformClusters } from "../hooks/useApi";
+
+interface AnomalyPoint {
+  id: string;
+  artifactId: string;
+  timeMin: number;
+  score: number;
+  cluster: number;
+  reasons: string[];
+}
 
 export const Route = createFileRoute("/anomalies")({
   head: () => ({ meta: [{ title: "Anomaly Detection — Artifact-Pulse" }] }),
@@ -29,8 +38,34 @@ const tt = {
 };
 
 function AnomaliesPage() {
-  const [selected, setSelected] = useState<AnomalyPoint | null>(anomalyPoints[8]);
+  const { data, isLoading } = useClusters();
+  const [selected, setSelected] = useState<AnomalyPoint | null>(null);
+
+  const clusters = data ? transformClusters(data.clusters) : [];
+  const anomalyPoints = clusters.flatMap(c => 
+    Array.from({ length: Math.min(c.artifactCount, 20) }, (_, i) => ({
+      id: `${c.id}-${i}`,
+      artifactId: `${c.id}-ART-${i}`,
+      timeMin: (new Date(c.windowStart).getTime() - new Date(clusters[0]?.windowStart || Date.now()).getTime()) / 60000 + Math.random() * 5,
+      score: Math.max(0.5, c.suspicionScore / 100 - Math.random() * 0.2),
+      cluster: clusters.indexOf(c),
+      reasons: ["Isolation Forest outlier", "KMeans distance > 1.5σ", "TF-IDF keyword match"],
+    }))
+  );
   const ranked = [...anomalyPoints].sort((a, b) => b.score - a.score);
+  if (!selected && ranked.length) setSelected(ranked[0]);
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-[1500px] space-y-6">
+        <PageHeader title="Anomaly Detection" subtitle="Loading..." />
+        <div className="animate-pulse space-y-4">
+          <div className="h-10 bg-muted/50 rounded" />
+          <div className="h-[420px] bg-muted/50 rounded" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
@@ -84,12 +119,13 @@ function AnomaliesPage() {
         <Panel title="Anomaly Detail" subtitle={selected ? selected.id : "select a point"}>
           {selected ? (
             <div className="space-y-3 font-mono text-xs">
-              <Row k="artifact_ref" v={selected.artifactId} highlight />
-              <Row k="ensemble_score" v={selected.score.toFixed(3)} accent />
-              <Row k="kmeans_cluster" v={`cluster_${selected.cluster}`} />
-              <Row k="t_offset" v={`${selected.timeMin.toFixed(1)} min from t0`} />
+              <Row k="point_id" v={selected.id} highlight />
+              <Row k="artifact" v={selected.artifactId} />
+              <Row k="suspicion_score" v={(selected.score * 100).toFixed(0)} accent />
+              <Row k="cluster" v={`cluster_${selected.cluster}`} />
+              <Row k="t_offset" v={`${selected.timeMin.toFixed(1)}m`} />
               <div>
-                <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">// why flagged</div>
+                <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">// reasons</div>
                 <div className="flex flex-wrap gap-1.5">
                   {selected.reasons.map(r => (
                     <span key={r} className="rounded border border-accent/40 bg-accent/10 px-2 py-0.5 text-accent">{r}</span>

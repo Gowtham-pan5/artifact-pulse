@@ -1,167 +1,108 @@
 /**
- * Artifact-Pulse — Flask Backend API Client
- * All requests go to /api/* which Vite proxies to http://127.0.0.1:5000
+ * API client for Artifact-Pulse backend (Flask on port 5000)
+ * Proxied through Vite dev server in development
  */
 
-const BASE = "";
+const API_BASE = '/api';
 
-// ─── Types mirroring Flask JSON responses ────────────────────────────────────
-
-export interface HealthResponse {
-  status: string;
-  version: string;
-  case_id: string;
-}
-
-export interface ExtractionStatus {
-  running: boolean;
-  progress: number;
-  stage: string;
-  message: string;
-  started_at: string | null;
-  error: string | null;
-  ml_scores: MlScores;
-}
-
-export interface MlScores {
-  final_suspicion_score?: number;
-  severity?: string;
-  anomaly_rate?: number;
-  total_anomalies?: number;
-  isolation_forest_score?: number;
-  keyword_hits?: number;
-  attack_type_breakdown?: Record<string, number>;
-  top_anomaly_explanations?: AnomalyExplanation[];
-  global_feature_importance?: FeatureImportance[];
-  top_anomalies?: PredictionResult[];
-}
-
-export interface PredictionResult {
-  artifact_id: string;
-  is_anomaly: boolean;
-  anomaly_score: number;
-  attack_type: string;
-  attack_confidence: number;
-  combined_risk: number;
-  severity: string;
-}
-
-export interface AnomalyExplanation {
-  artifact_id: string;
-  attack_type: string;
-  severity: string;
-  combined_risk: number;
-  summary: string;
-  reasons: string[];
-}
-
-export interface FeatureImportance {
-  feature: string;
-  importance: number;
-  explanation: string;
-}
-
-export interface Artifact {
-  artifact_id: number;
-  source_layer: string;
-  artifact_type: string;
-  source_path: string;
-  event_time: string;
-  risk_weight: number;
-  content_hash: string;
-  chain_hash: string;
-}
-
-export interface StatsResponse {
-  total: number;
-  total_artifacts: number;
-  af_count: number;
-  antiforensic: number;
-  high_risk_count: number;
-  high_risk: number;
-  clusters: number;
-  layer_breakdown: Record<string, number>;
-}
-
-export interface AntiForensicEvent {
-  id: number;
-  event_type: string;
-  severity: string;
-  timestamp: string;
-  evidence: string;
-}
-
-export interface Cluster {
-  cluster_id: string;
-  suspicion_score: number;
-  window_start: string;
-  attack_type: string;
-  artifact_count?: number;
-}
-
-export interface ChainVerification {
-  status: string;
-  message: string;
-  chain_integrity?: boolean;
-  master_hash?: string;
-}
-
-// ─── API Helpers ────────────────────────────────────────────────────────────
-
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
-  return res.json() as Promise<T>;
-}
-
-async function post<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: body ? { "Content-Type": "application/json" } : {},
-    body: body ? JSON.stringify(body) : undefined,
+async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
   });
-  if (!res.ok && res.status !== 409) throw new Error(`POST ${path} → ${res.status}`);
-  return res.json() as Promise<T>;
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `API error ${res.status}`);
+  }
+  return res.json();
 }
-
-// ─── Public API Functions ────────────────────────────────────────────────────
 
 export const api = {
-  /** Check if Flask backend is alive */
-  health: () => get<HealthResponse>("/api/health"),
+  // Dashboard / Summary
+  getStats: () => fetchJson<{
+    layer_breakdown: Record<string, number>;
+    total: number;
+    af_count: number;
+    high_risk_count: number;
+    total_artifacts: number;
+    antiforensic: number;
+    high_risk: number;
+    clusters: number;
+  }>('/stats'),
 
-  /** Start the forensic extraction pipeline */
-  startExtraction: () => post<{ status: string; case_id: string }>("/api/extraction/start"),
-
-  /** Poll extraction progress (running, progress 0-100, stage, message, ml_scores) */
-  extractionStatus: () => get<ExtractionStatus>("/api/extraction/status"),
-
-  /** Get aggregate dashboard stats */
-  stats: () => get<StatsResponse>("/api/stats"),
-
-  /** Get all artifacts with optional layer filter and pagination */
-  artifacts: (layer?: string, limit = 200, offset = 0) => {
-    const params = new URLSearchParams();
-    if (layer && layer !== "all") params.set("layer", layer);
-    params.set("limit", String(limit));
-    params.set("offset", String(offset));
-    return get<Artifact[]>(`/api/artifacts?${params.toString()}`);
+  // Artifacts
+  getArtifacts: (params?: { limit?: number; offset?: number; severity?: string; layer?: string }) => {
+    const search = new URLSearchParams();
+    if (params?.limit) search.set('limit', String(params.limit));
+    if (params?.offset) search.set('offset', String(params.offset));
+    if (params?.severity) search.set('severity', params.severity);
+    if (params?.layer) search.set('layer', params.layer);
+    const qs = search.toString();
+    return fetchJson<{ artifacts: any[]; total: number }>(`/artifacts${qs ? `?${qs}` : ''}`);
   },
 
-  /** Get anti-forensic detection events */
-  antiforensic: () => get<AntiForensicEvent[]>("/api/antiforensic"),
+  // Anomalies / Clusters
+  getClusters: () => fetchJson<{ clusters: any[] }>('/clusters'),
 
-  /** Get suspicious correlation clusters */
-  clusters: () => get<Cluster[]>("/api/clusters"),
+  // Anti-Forensic
+  getAntiForensic: () => fetchJson<{ antiforensic: any[] }>('/antiforensic'),
 
-  /** Verify the cryptographic chain of custody */
-  verifyChain: () => get<ChainVerification>("/api/chain/verify"),
+  // Chain of Custody
+  verifyChain: () => fetchJson<{ integrity: boolean; status: string; message: string; master_hash: string }>('/chain/verify'),
 
-  /** Generate the PDF forensic report */
-  generateReport: () => post<{ status: string; path?: string }>("/api/report/generate"),
+  // Pipeline
+  getPipelineStatus: () => fetchJson<{ steps: any[] }>('/pipeline/status'),
 
-  /** Download the PDF forensic report */
-  downloadReport: () => {
-    window.location.href = "/api/report/download";
-  },
+  // ML
+  getMlFeatureImportance: () => fetchJson<any[]>('/ml/feature-importance'),
+  getMlExplanations: () => fetchJson<any[]>('/ml/explanations'),
+  getMlAttackBreakdown: () => fetchJson<any>('/ml/attack-breakdown'),
+  getMlTrainingInfo: () => fetchJson<any>('/ml/training-info'),
+
+  // Reports
+  generateReport: () => fetchJson<{ status: string; path: string }>('/report/generate', { method: 'POST' }),
+  downloadReport: () => `${API_BASE}/report/download`,
 };
+
+// Type definitions matching backend response shapes
+export interface BackendArtifact {
+  id: string;
+  timestamp: string;
+  source_layer: string;
+  source: string;
+  description: string;
+  severity: string;
+  content_hash: string;
+  chain_hash: string;
+  risk_weight: number;
+}
+
+export interface BackendCluster {
+  id: string;
+  window_start: string;
+  window_end: string;
+  artifact_count: number;
+  layer_diversity: number;
+  suspicion_score: number;
+  pattern: string;
+  layers: string[];
+}
+
+export interface BackendAntiForensicEvent {
+  id: string;
+  timestamp: string;
+  technique: string;
+  evidence: string;
+  severity: string;
+}
+
+export interface BackendStats {
+  layer_breakdown: Record<string, number>;
+  total: number;
+  af_count: number;
+  high_risk_count: number;
+  total_artifacts: number;
+  antiforensic: number;
+  high_risk: number;
+  clusters: number;
+}

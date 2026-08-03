@@ -3,8 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ShieldCheck, Link2, Check, AlertTriangle } from "lucide-react";
 import { PageHeader, Panel } from "./index";
-import { artifacts, caseInfo } from "../lib/mockData";
-
+import { useArtifacts, useChainVerify, transformArtifacts, type Artifact } from "../hooks/useApi";
 export const Route = createFileRoute("/chain")({
   head: () => ({ meta: [{ title: "Chain of Custody — Artifact-Pulse" }] }),
   component: ChainPage,
@@ -13,16 +12,22 @@ export const Route = createFileRoute("/chain")({
 function ChainPage() {
   const [verifying, setVerifying] = useState(false);
   const [verifiedAt, setVerifiedAt] = useState<string | null>(new Date().toISOString());
+  const { data: chainData, isLoading: chainLoading, refetch: verifyChain } = useChainVerify();
+  const { data: artifactsData, isLoading: artifactsLoading } = useArtifacts({ limit: 1000 });
+  
+  const artifacts = artifactsData ? transformArtifacts(artifactsData.artifacts) : [];
+  const integrity = chainData?.integrity ?? true;
+  const masterHash = chainData?.master_hash ?? "";
 
   function verify() {
     setVerifying(true);
     setVerifiedAt(null);
-    setTimeout(() => {
+    verifyChain().then(() => {
       setVerifying(false);
       const ts = new Date().toISOString();
       setVerifiedAt(ts);
       toast.success("Chain integrity verified", { description: `${artifacts.length} blocks · master_hash matches` });
-    }, 1400);
+    });
   }
 
   return (
@@ -45,12 +50,12 @@ function ChainPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <IntegrityCard
           label="Ledger status"
-          value={verifying ? "VERIFYING" : "INTACT"}
-          sub={verifiedAt ? `verified ${new Date(verifiedAt).toLocaleTimeString()}` : "in progress"}
-          ok={!verifying}
+          value={verifying ? "VERIFYING" : integrity ? "INTACT" : "TAMPERED"}
+          sub={verifiedAt ? `verified ${new Date(verifiedAt).toLocaleTimeString()}` : chainLoading ? "verifying..." : "in progress"}
+          ok={!verifying && integrity}
         />
         <IntegrityCard label="Total blocks" value={artifacts.length.toString()} sub="append-only sqlite" ok />
-        <IntegrityCard label="Master hash" value={caseInfo.masterHash.slice(0, 18) + "…"} sub="root commit" ok mono />
+        <IntegrityCard label="Master hash" value={masterHash.slice(0, 18) + "…" || "—"} sub="root commit" ok mono />
       </div>
 
       <Panel title="Hash Chain Ledger" subtitle="each block references prev_hash → tamper of any block breaks the chain">

@@ -105,9 +105,14 @@ def _run_pipeline() -> None:
                 global_state["message"] = "Sealing evidence chain..."
             seal = EvidenceSealer(db).seal()
             with state_lock:
-                global_state["artifacts"] = db.get_all_artifacts()
+                global_state["artifacts"] = [
+                    _enrich_artifact(dict(r)) for r in db.get_all_artifacts()
+                ]
                 global_state["clusters"] = clusters
-                global_state["antiforensic"] = db.get_antiforensic_events()
+                global_state["antiforensic"] = [
+                    _enrich_antiforensic(dict(r))
+                    for r in db.get_antiforensic_events()
+                ]
                 global_state["ml_scores"] = ml
                 global_state["seal"] = seal
                 global_state["progress"] = 100
@@ -351,6 +356,43 @@ def ml_training_info() -> Any:
     except Exception:
         logger.exception("ML training metadata endpoint failed")
         raise
+
+
+def _severity_from_risk(risk: float) -> str:
+    """Derive a display severity from an artifact's risk weight."""
+    if risk >= 0.9:
+        return "critical"
+    if risk >= 0.7:
+        return "high"
+    if risk >= 0.4:
+        return "medium"
+    return "low"
+
+
+def _enrich_artifact(row: dict) -> dict:
+    """Map a raw artifacts DB row to the frontend BackendArtifact contract."""
+    return {
+        "id": row.get("artifact_id") or str(row.get("id") or ""),
+        "timestamp": row.get("event_time"),
+        "source_layer": row.get("source_layer"),
+        "source": row.get("source_path"),
+        "description": row.get("content"),
+        "severity": _severity_from_risk(float(row.get("risk_weight") or 0)),
+        "content_hash": row.get("content_hash"),
+        "chain_hash": row.get("chain_hash"),
+        "risk_weight": row.get("risk_weight"),
+    }
+
+
+def _enrich_antiforensic(row: dict) -> dict:
+    """Map a raw antiforensic DB row to the API contract."""
+    return {
+        "id": str(row.get("id") or ""),
+        "timestamp": row.get("event_time"),
+        "technique": row.get("event_type"),
+        "evidence": row.get("evidence"),
+        "severity": row.get("severity"),
+    }
 
 
 def _layer_breakdown(artifacts: list[dict[str, Any]]) -> dict[str, int]:

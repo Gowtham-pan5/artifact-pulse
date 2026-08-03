@@ -8,11 +8,8 @@ import {
   Activity, AlertTriangle, ShieldCheck, Database, FolderSearch,
   ChevronRight, PlayCircle, Cpu, ScrollText, HardDrive,
 } from "lucide-react";
-import {
-  summaryStats, caseInfo, timelineData, activityFeed,
-  antiForensicEvents, clusters,
-} from "../lib/mockData";
-
+import { useStats, useClusters, useAntiForensic, transformStats, transformClusters, transformAntiForensic } from "../hooks/useApi";
+import { caseInfo, summaryStats, activityFeed } from "../lib/mockData";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -24,12 +21,39 @@ export const Route = createFileRoute("/")({
 });
 
 function DashboardHome() {
+  const { data: statsData, isLoading: statsLoading } = useStats();
+  const { data: clustersData, isLoading: clustersLoading } = useClusters();
+  const { data: afData, isLoading: afLoading } = useAntiForensic();
+  const loading = statsLoading || clustersLoading || afLoading;
+
+  const stats = statsData ? transformStats(statsData) : null;
+  const clusters = clustersData ? transformClusters(clustersData.clusters) : [];
+  const antiForensicEvents = afData ? transformAntiForensic(afData.antiforensic) : [];
+  
   const sev = {
     critical: antiForensicEvents.filter(e => e.severity === "critical").length + 4,
     high: 11,
     medium: 6,
     low: 22,
   };
+  
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-[1500px] space-y-6">
+        <PageHeader title="Operations Dashboard" subtitle="Loading..." />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="rounded-md border border-border/60 bg-card/40 p-5 animate-pulse">
+              <div className="h-4 w-1/4 bg-muted/50 rounded" />
+              <div className="mt-4 h-8 w-1/2 bg-muted/50 rounded" />
+              <div className="mt-2 h-3 w-1/3 bg-muted/50 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
       <PageHeader
@@ -39,7 +63,7 @@ function DashboardHome() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard icon={FolderSearch} label="Active Investigations" value="3" sub="2 sealed · 1 in triage" tone="primary" />
-        <KpiCard icon={Database} label="Artifacts Processed" value={summaryStats.artifactsExtracted.toLocaleString()} sub="across 4 layers" tone="accent" />
+        <KpiCard icon={Database} label="Artifacts Processed" value={stats?.artifactsExtracted.toLocaleString() ?? "—"} sub="across 4 layers" tone="accent" />
         <KpiCard
           icon={AlertTriangle}
           label="Anomalies Detected"
@@ -47,11 +71,11 @@ function DashboardHome() {
           sub={`${sev.critical} crit · ${sev.high} high · ${sev.medium} med`}
           tone="critical"
         />
-        <KpiCard icon={ShieldCheck} label="Chain of Custody" value="INTACT" sub="14,782 / 14,782 verified" tone="primary" />
+        <KpiCard icon={ShieldCheck} label="Chain of Custody" value="INTACT" sub={`${stats?.artifactsExtracted ?? "—"} verified`} tone="primary" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <RiskGauge score={summaryStats.overallSuspicion} />
+        <RiskGauge score={stats?.overallSuspicion ?? 0} />
         <SeverityCard sev={sev} />
         <CaseInfoCard />
       </div>
@@ -60,7 +84,7 @@ function DashboardHome() {
         <Panel className="lg:col-span-2" title="Cross-Layer Suspicion Timeline" subtitle="5-min rolling window · weighted ensemble score" right={<LegendDot color="oklch(0.82 0.18 155)" label="suspicion" />}>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timelineData} margin={{ top: 10, right: 14, left: -18, bottom: 0 }}>
+              <AreaChart data={clusters.map(c => ({ time: new Date(c.windowStart).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }), score: c.suspicionScore }))} margin={{ top: 10, right: 14, left: -18, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="oklch(0.82 0.18 155)" stopOpacity={0.55} />

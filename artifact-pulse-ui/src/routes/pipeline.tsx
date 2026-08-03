@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   HardDrive, ScrollText, Cpu, ShieldAlert, Network, Brain, FileLock,
@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { PageHeader, Panel } from "./index";
 import { pipelineSteps, type PipelineStatus, caseInfo } from "../lib/mockData";
-import { api } from "../lib/api";
 
 export const Route = createFileRoute("/pipeline")({
   head: () => ({ meta: [{ title: "Pipeline Runner — Artifact-Pulse" }] }),
@@ -16,126 +15,103 @@ export const Route = createFileRoute("/pipeline")({
 
 const ICONS = { HardDrive, ScrollText, Cpu, ShieldAlert, Network, Brain, FileLock };
 
-// Map Flask stage names → pipeline step indices
-const STAGE_TO_INDEX: Record<string, number> = {
+const STAGE_TO_STEP: Record<string, number> = {
+  starting: 0,
   filesystem: 0,
   eventlogs: 1,
   process: 2,
   antiforensic: 3,
   correlation: 4,
-  ml_train: 5, ml_predict: 5, ml_explain: 5,
+  ml_train: 5,
+  ml_predict: 5,
+  ml_explain: 5,
   seal: 6,
-  completed: 6,
 };
 
 function PipelinePage() {
   const [statuses, setStatuses] = useState<PipelineStatus[]>(pipelineSteps.map(() => "pending"));
-  const [activeLogs, setActiveLogs] = useState<Record<number, number>>({});
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [stageMessage, setStageMessage] = useState("");
   const [expanded, setExpanded] = useState<number | null>(0);
-  const [liveProgress, setLiveProgress] = useState(0);
-  const [liveMessage, setLiveMessage] = useState("");
-  const pollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function stopPolling() {
+    if (pollTimer.current) {
+      clearTimeout(pollTimer.current);
+      pollTimer.current = null;
+    }
+  }
 
   function reset() {
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-    if (pollerRef.current) clearInterval(pollerRef.current);
+    stopPolling();
     setStatuses(pipelineSteps.map(() => "pending"));
-    setActiveLogs({});
+    setProgress(0);
+    setStageMessage("");
     setRunning(false);
-    setLiveProgress(0);
-    setLiveMessage("");
   }
 
-  const pollStatus = useCallback(async () => {
+  async function poll() {
     try {
-      const data = await api.extractionStatus();
-      setLiveProgress(data.progress || 0);
-      setLiveMessage(data.message || "");
+      const res = await fetch("/api/extraction/status");
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const st = await res.json();
+      const activeIdx = STAGE_TO_STEP[st.stage] ?? -1;
+      setProgress(st.progress ?? 0);
+      setStageMessage(st.message ?? "");
 
-      // Update step statuses based on stage
-      const idx = STAGE_TO_INDEX[data.stage] ?? -1;
-      if (idx >= 0) {
-        setStatuses(prev => {
-          const next = [...prev];
-          // Mark all steps before current as done
-          for (let i = 0; i < idx; i++) next[i] = "done";
-          // Mark current step as running (or done if completed)
-          next[idx] = data.stage === "completed" ? "done" : "running";
-          return next;
-        });
-        setExpanded(idx);
-        // Simulate log progress for current step
-        const step = pipelineSteps[idx];
-        if (step) {
-          setActiveLogs(prev => ({
-            ...prev,
-            [idx]: Math.min((prev[idx] || 0) + 1, step.logs.length),
-          }));
-        }
-      }
-
-      if (!data.running && (data.progress || 0) >= 100) {
-        if (pollerRef.current) clearInterval(pollerRef.current);
+      if (st.stage === "completed") {
+        setStatuses(prev => prev.map(() => "done"));
         setRunning(false);
-        // Mark all steps as done
-        setStatuses(pipelineSteps.map(() => "done"));
-        setActiveLogs(Object.fromEntries(pipelineSteps.map((s, i) => [i, s.logs.length])));
-        toast.success("Pipeline complete", { description: "Evidence sealed · PDF ready" });
+        toast.success("Pipeline complete", { description: st.message ?? "Evidence sealed" });
+        return;
       }
-      if (data.error) {
-        if (pollerRef.current) clearInterval(pollerRef.current);
+      if (st.stage === "error" || st.error) {
+        setStatuses(prev => prev.map((s, i) => (i <= activeIdx ? "failed" : s)));
         setRunning(false);
-        toast.error("Pipeline error", { description: data.error });
+        toast.error("Pipeline failed", { description: st.error ?? st.message });
+        return;
       }
-    } catch {
-      // backend offline — keep UI running silently
+      if (activeIdx >= 0) {
+        setStatuses(prev =>
+          prev.map((s, i) =>
+            i < activeIdx ? "done" : i === activeIdx ? "running" : "pending"
+          )
+        );
+        setExpanded(activeIdx);
+      }
+      if (st.running) pollTimer.current = setTimeout(poll, 2500);
+    } catch (err) {
+      setRunning(false);
+      toast.error("Lost connection to backend", { description: String(err) });
     }
-  }, []);
+  }
 
-  async function run() {
+  function run() {
     reset();
     setRunning(true);
-    try {
-      await api.startExtraction();
-      toast.success("Pipeline started", { description: "Flask backend is processing your endpoint" });
-      pollerRef.current = setInterval(pollStatus, 2000);
-    } catch {
-      // Fallback: demo mode with simulated timers if backend unavailable
-      toast.info("Demo mode", { description: "Backend offline — running simulation" });
-      let delay = 200;
-      pipelineSteps.forEach((step, i) => {
-        timers.current.push(setTimeout(() => {
-          setStatuses(prev => { const n = [...prev]; n[i] = "running"; return n; });
-          setExpanded(i);
-          step.logs.forEach((_, li) => {
-            timers.current.push(setTimeout(() => {
-              setActiveLogs(prev => ({ ...prev, [i]: li + 1 }));
-            }, li * 240));
-          });
-        }, delay));
-        delay += step.logs.length * 240 + 400;
-        timers.current.push(setTimeout(() => {
-          setStatuses(prev => { const n = [...prev]; n[i] = "done"; return n; });
-        }, delay));
-        delay += 250;
-      });
-      timers.current.push(setTimeout(() => {
+    toast.success("Pipeline started", { description: `target: ${caseInfo.hostName}` });
+    fetch("/api/extraction/start", { method: "POST" })
+      .then(async res => {
+        if (res.status === 409) {
+          toast.info("Pipeline already running", { description: "polling existing run" });
+          poll();
+          return;
+        }
+        if (!res.ok) throw new Error(`start failed: ${res.status}`);
+        poll();
+      })
+      .catch(err => {
         setRunning(false);
-        toast.success("Demo complete", { description: "Simulation finished" });
-      }, delay + 200));
-    }
+        setStatuses(prev => prev.map(() => "failed"));
+        toast.error("Backend unreachable", { description: `is Flask running on :5000? (${err})` });
+      });
   }
 
-  useEffect(() => () => {
-    timers.current.forEach(clearTimeout);
-    if (pollerRef.current) clearInterval(pollerRef.current);
-  }, []);
+  useEffect(() => () => stopPolling(), []);
 
   const completed = statuses.filter(s => s === "done").length;
-  const totalPct = Math.round((completed / pipelineSteps.length) * 100);
+  const totalPct = running ? progress : Math.round((completed / pipelineSteps.length) * 100);
 
   return (
     <div className="mx-auto max-w-[1300px] space-y-6">
@@ -170,14 +146,11 @@ function PipelinePage() {
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full bg-gradient-to-r from-primary to-accent transition-all duration-300"
-                style={{ width: `${liveProgress || totalPct}%` }}
+                style={{ width: `${totalPct}%` }}
               />
             </div>
-            {liveMessage && (
-              <p className="mt-1 font-mono text-[10px] text-muted-foreground">{liveMessage}</p>
-            )}
           </div>
-          <div className="font-mono text-2xl font-bold text-primary">{liveProgress || totalPct}%</div>
+          <div className="font-mono text-2xl font-bold text-primary">{totalPct}%</div>
           <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
             {completed} / {pipelineSteps.length} stages
           </div>
@@ -189,7 +162,7 @@ function PipelinePage() {
           const status = statuses[i];
           const Icon = (ICONS as any)[step.icon] ?? Circle;
           const isOpen = expanded === i;
-          const logCount = activeLogs[i] ?? (status === "done" ? step.logs.length : 0);
+          const logCount = status === "done" ? step.logs.length : status === "running" ? step.logs.length - 1 : 0;
           return (
             <div
               key={step.id}
@@ -231,6 +204,12 @@ function PipelinePage() {
                         </span>
                       </div>
                     ))}
+                    {status === "running" && stageMessage && (
+                      <div className="terminal-feed-line flex gap-2 py-0.5">
+                        <span className="text-primary">[→]</span>
+                        <span className="text-foreground">{stageMessage}</span>
+                      </div>
+                    )}
                     {status === "running" && <div className="text-primary blink-caret py-0.5" />}
                     {status === "pending" && <div className="py-2 text-muted-foreground">// awaiting upstream stage…</div>}
                   </div>

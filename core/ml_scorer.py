@@ -59,7 +59,7 @@ class MLScorer:
                 [p for p in all_predictions if p.get("is_anomaly")],
                 key=lambda item: float(item.get("combined_risk", 0.0)),
                 reverse=True,
-            )[:200]
+            )[:60]
             indexed_artifacts = {
                 str(a.get("artifact_id", "UNKNOWN")): a for a in artifacts_for_ml
             }

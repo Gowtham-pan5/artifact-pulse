@@ -1,96 +1,69 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Search, ArrowUpDown, X, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Panel } from "./index";
-import { artifacts as mockArtifacts, type Layer, type Severity } from "../lib/mockData";
-import { api, type Artifact as ApiArtifact } from "../lib/api";
+import { useArtifacts, transformArtifacts, type Artifact, type Layer, type Severity } from "../hooks/useApi";
 
 export const Route = createFileRoute("/artifacts")({
   head: () => ({ meta: [{ title: "Artifacts Explorer — Artifact-Pulse" }] }),
   component: ArtifactsPage,
 });
 
-// Map backend artifact to a consistent display shape
-type DisplayArtifact = {
-  id: string;
-  timestamp: string;
-  layer: string;
-  source: string;
-  description: string;
-  severity: string;
-  contentHash: string;
-  chainHash: string;
-  riskWeight: number;
-};
-
-function backendToDisplay(a: ApiArtifact): DisplayArtifact {
-  const risk = a.risk_weight ?? 0;
-  const sev = risk >= 0.7 ? "high" : risk >= 0.4 ? "medium" : "low";
-  return {
-    id: `AF-${String(a.artifact_id).padStart(4, "0")}`,
-    timestamp: a.event_time || "",
-    layer: a.source_layer || "filesystem",
-    source: a.source_path || "",
-    description: `${a.artifact_type || "unknown"} — ${a.source_path || ""}`,
-    severity: sev,
-    contentHash: a.content_hash || "",
-    chainHash: a.chain_hash || "",
-    riskWeight: risk,
-  };
-}
-
-const LAYERS: ("all" | string)[] = ["all", "filesystem", "system_events", "process_snapshot", "registry"];
+const LAYERS: ("all" | Layer)[] = ["all", "filesystem", "eventlog", "process", "registry"];
 const SEVS: ("all" | Severity)[] = ["all", "critical", "high", "medium", "low"];
 
 function ArtifactsPage() {
   const [q, setQ] = useState("");
-  const [layer, setLayer] = useState<string>("all");
-  const [sev, setSev] = useState<string>("all");
-  const [sortKey, setSortKey] = useState<keyof DisplayArtifact>("timestamp");
+  const [layer, setLayer] = useState<typeof LAYERS[number]>("all");
+  const [sev, setSev] = useState<typeof SEVS[number]>("all");
+  const [sortKey, setSortKey] = useState<keyof Artifact>("timestamp");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [selected, setSelected] = useState<DisplayArtifact | null>(null);
-  const [liveArtifacts, setLiveArtifacts] = useState<DisplayArtifact[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [selected, setSelected] = useState<Artifact | null>(null);
 
-  useEffect(() => {
-    api.artifacts()
-      .then(data => {
-        setLiveArtifacts(data.map(backendToDisplay));
-        setLoaded(true);
-      })
-      .catch(() => setLoaded(true));  // silently fall back to mock
-  }, []);
-
-  // Use live data if available, otherwise fall back to mock
-  const allArtifacts: DisplayArtifact[] = loaded && liveArtifacts.length > 0
-    ? liveArtifacts
-    : (mockArtifacts as unknown as DisplayArtifact[]);
-
+  const { data, isLoading } = useArtifacts({ limit: 1000 });
+  
+  const artifacts = data ? transformArtifacts(data.artifacts) : [];
+  
   const filtered = useMemo(() => {
+    if (!artifacts.length) return [];
     const lower = q.toLowerCase();
-    return allArtifacts
+    return artifacts
       .filter(a =>
         (layer === "all" || a.layer === layer)
         && (sev === "all" || a.severity === sev)
         && (lower === "" || a.description.toLowerCase().includes(lower) || a.source.toLowerCase().includes(lower) || a.id.toLowerCase().includes(lower))
       )
       .sort((a, b) => {
-        const av = a[sortKey] as unknown, bv = b[sortKey] as unknown;
-        if ((av as string) < (bv as string)) return sortDir === "asc" ? -1 : 1;
-        if ((av as string) > (bv as string)) return sortDir === "asc" ? 1 : -1;
+        const av = a[sortKey] as any, bv = b[sortKey] as any;
+        if (av < bv) return sortDir === "asc" ? -1 : 1;
+        if (av > bv) return sortDir === "asc" ? 1 : -1;
         return 0;
       });
-  }, [q, layer, sev, sortKey, sortDir, allArtifacts]);
+  }, [artifacts, q, layer, sev, sortKey, sortDir]);
 
-  function toggleSort(k: keyof DisplayArtifact) {
+  function toggleSort(k: keyof Artifact) {
     if (sortKey === k) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortKey(k); setSortDir("desc"); }
   }
 
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-[1500px] space-y-6">
+        <PageHeader title="Artifacts Explorer" subtitle="Loading..." />
+        <Panel title="Filters" subtitle="fetching artifacts...">
+          <div className="animate-pulse space-y-4">
+            <div className="h-10 bg-muted/50 rounded" />
+            <div className="h-10 bg-muted/50 rounded" />
+          </div>
+        </Panel>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
-      <PageHeader title="Artifacts Explorer" subtitle={`${allArtifacts.length} indexed · ${loaded && liveArtifacts.length > 0 ? "live from backend" : "demo data"} · sortable · filterable`} />
+      <PageHeader title="Artifacts Explorer" subtitle={`${artifacts.length} indexed · cross-layer · sortable · filterable`} />
 
       <Panel title="Filters" subtitle={`showing ${filtered.length} of ${artifacts.length}`}>
         <div className="flex flex-wrap items-center gap-3">

@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { FileText, Download, ShieldCheck, ShieldAlert, Plus, Loader2 } from "lucide-react";
 import { PageHeader, Panel } from "./index";
 import { reports as seed, type Report } from "../lib/mockData";
-import { api } from "../lib/api";
 
 export const Route = createFileRoute("/reports")({
   head: () => ({ meta: [{ title: "Reports — Artifact-Pulse" }] }),
@@ -14,29 +13,52 @@ export const Route = createFileRoute("/reports")({
 function ReportsPage() {
   const [reports, setReports] = useState<Report[]>(seed);
   const [generating, setGenerating] = useState(false);
+  const [generatedPath, setGeneratedPath] = useState<string | null>(null);
 
   async function generate() {
     setGenerating(true);
-    toast.info("Generating forensic PDF…", { description: "calling Flask backend" });
+    toast.info("Compiling triage report…", { description: "merging artifacts + clusters + ledger" });
     try {
-      await api.generateReport();
-      const id = `RPT-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-LIVE`;
+      const res = await fetch("/api/report/generate", { method: "POST" });
+      if (!res.ok) throw new Error(`generate failed: ${res.status}`);
+      const data = await res.json();
+      setGeneratedPath(data.path ?? null);
+
+      let artifacts = 0;
+      let hash = "";
+      let caseId = "AP-CURRENT";
+      try {
+        const s = await (await fetch("/api/stats")).json();
+        artifacts = s.total_artifacts ?? s.total ?? 0;
+      } catch { /* stats unavailable */ }
+      try {
+        const c = await (await fetch("/api/chain/verify")).json();
+        hash = c.master_hash ?? "";
+      } catch { /* chain unavailable */ }
+      try {
+        const h = await (await fetch("/api/health")).json();
+        caseId = h.case_id ?? caseId;
+      } catch { /* health unavailable */ }
+
       const r: Report = {
-        id,
-        caseId: "AP-LIVE",
-        title: "Live Forensic Report — this endpoint",
+        id: `RPT-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Date.now().toString(36).toUpperCase()}`,
+        caseId,
+        title: "Forensic Triage Report — this device",
         generatedAt: new Date().toISOString(),
         investigator: "Artifact-Pulse",
-        pages: 0, sizeKb: 0, artifacts: 0,
-        hash: "–– see backend output/ ––",
+        pages: 0,
+        sizeKb: 0,
+        artifacts,
+        hash: hash || "pending",
         verified: true,
       };
       setReports(prev => [r, ...prev]);
-      toast.success("Report generated!", { description: "Check output/reports/ folder for the PDF" });
-    } catch {
-      toast.error("Backend offline", { description: "Run python main.py first" });
+      toast.success("Report generated", { description: data.path ?? r.id });
+    } catch (err) {
+      toast.error("Report generation failed", { description: `is Flask running on :5000? (${err})` });
+    } finally {
+      setGenerating(false);
     }
-    setGenerating(false);
   }
 
   return (
@@ -88,17 +110,21 @@ function ReportsPage() {
                   <span>case <span className="text-foreground">{r.caseId}</span></span>
                   <span>investigator <span className="text-foreground">{r.investigator}</span></span>
                   <span>generated <span className="text-foreground">{new Date(r.generatedAt).toLocaleString()}</span></span>
-                  <span>{r.pages} pages · {(r.sizeKb / 1024).toFixed(2)} MB · {r.artifacts.toLocaleString()} artifacts</span>
+                  <span>
+                    {r.pages > 0 ? `${r.pages} pages · ${(r.sizeKb / 1024).toFixed(2)} MB · ` : ""}
+                    {r.artifacts.toLocaleString()} artifacts
+                  </span>
                 </div>
                 <div className="mt-1 truncate font-mono text-[10px] text-accent">sha256: {r.hash}</div>
               </div>
               <button
                 onClick={() => {
-                  if (r.caseId === "AP-LIVE") {
-                    api.downloadReport();
-                  } else {
-                    toast.info("Demo report", { description: "Run a real pipeline first to download a live PDF" });
+                  if (!generatedPath) {
+                    toast.info("No report generated yet", { description: "click generate report first" });
+                    return;
                   }
+                  toast.success("Download started", { description: generatedPath.split(/[\\/]/).pop() });
+                  window.open("/api/report/download", "_blank");
                 }}
                 className="flex items-center gap-2 rounded border border-border bg-card/60 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-foreground hover:border-primary/40 hover:text-primary"
               >
