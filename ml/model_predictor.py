@@ -115,13 +115,80 @@ class ModelPredictor:
             else:
                 artifacts_eval = artifacts
 
-            predictions: List[Dict[str, Any]] = []
-            errors = 0
-            for artifact in artifacts_eval:
-                p = self.predict_artifact(artifact)
-                if p.get("error"):
-                    errors += 1
-                predictions.append(p)
+            if not self.models:
+                predictions = [
+                    self._safe_prediction(a, "models_not_loaded")
+                    for a in artifacts_eval
+                ]
+                errors = len(artifacts_eval)
+                risks = [0.0] * len(predictions)
+            else:
+                # Vectorized inference: score the whole batch at once.
+                feature_names = self.models.get("metadata", {}).get(
+                    "trained_feature_names", []
+                )
+                feature_df, _ = self.feature_engineer.artifacts_to_matrix(
+                    artifacts_eval
+                )
+                X_all = np.zeros((len(artifacts_eval), len(feature_names)), float)
+                for ci, name in enumerate(feature_names):
+                    if name in feature_df.columns:
+                        X_all[:, ci] = feature_df[name].fillna(0.0).to_numpy()
+                X_scaled = self.models["scaler"].transform(X_all)
+
+                if_model = self.models["isolation_forest"]
+                if_pred = if_model.predict(X_scaled)
+                if_score_raw = if_model.decision_function(X_scaled)
+                if_score = 1.0 / (1.0 + np.exp(if_score_raw))
+                is_anomaly = if_pred == -1
+
+                rf = self.models["random_forest"]
+                rf_probs = rf.predict_proba(X_scaled)
+                best_idx = np.argmax(rf_probs, axis=1)
+                attack_confidence = rf_probs[np.arange(rf_probs.shape[0]), best_idx]
+                label_encoder = self.models["label_encoder"]
+                attack_types = label_encoder.inverse_transform(best_idx)
+
+                gb = self.models["gradient_boost"]
+                gb_probs = gb.predict_proba(X_scaled)
+                gb_risk = (
+                    gb_probs[:, 1] if gb_probs.shape[1] > 1 else gb_probs[:, 0]
+                )
+
+                kmeans = self.models["kmeans"]
+                behavioral = kmeans.predict(X_scaled)
+
+                raw_risk = np.array(
+                    [
+                        float(a.get("risk_weight", 0.0) or 0.0)
+                        for a in artifacts_eval
+                    ]
+                )
+                combined = np.clip(
+                    if_score * 0.40 + gb_risk * 0.35 + raw_risk * 0.25, 0.0, 1.0
+                )
+
+                predictions = []
+                errors = 0
+                for i, art in enumerate(artifacts_eval):
+                    c = float(combined[i])
+                    predictions.append(
+                        {
+                            "artifact_id": str(
+                                art.get("artifact_id", "UNKNOWN")
+                            ),
+                            "is_anomaly": bool(is_anomaly[i]),
+                            "anomaly_score": round(float(if_score[i]), 4),
+                            "attack_type": str(attack_types[i]),
+                            "attack_confidence": round(
+                                float(attack_confidence[i]), 4
+                            ),
+                            "gb_risk_score": round(float(gb_risk[i]), 4),
+                            "behavioral_cluster": int(behavioral[i]),
+                            "combined_risk": round(c, 4),
+                            "severity": self._severity(c),
+                        }
+                    )
 
             risks = [float(p.get("combined_risk", 0.0)) for p in predictions]
             anomalies = [p for p in predictions if p.get("is_anomaly")]

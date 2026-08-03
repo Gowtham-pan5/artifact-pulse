@@ -29,7 +29,7 @@ def phase(name, fn):
 
 with DBManager() as db:
     artifacts = db.get_all_artifacts()
-    artifacts_for_ml = artifacts[:8000]
+    artifacts_for_ml = artifacts[:4000]
     print(f"[timing] artifacts loaded: {len(artifacts)} "
           f"(using {len(artifacts_for_ml)})")
 
