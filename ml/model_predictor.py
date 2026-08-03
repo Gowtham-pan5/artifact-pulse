@@ -110,8 +110,8 @@ class ModelPredictor:
                     "predictions": [],
                 }
 
-            if len(artifacts) > 8000:
-                artifacts_eval = artifacts[:8000]
+            if len(artifacts) > 4000:
+                artifacts_eval = artifacts[:4000]
             else:
                 artifacts_eval = artifacts
 

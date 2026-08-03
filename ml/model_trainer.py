@@ -98,8 +98,8 @@ class ModelTrainer:
                     pickle.dump(metadata, fh)
                 return metadata
 
-            if n_samples > 2500:
-                sampled = X_df.sample(n=2500, random_state=42)
+            if n_samples > 2000:
+                sampled = X_df.sample(n=2000, random_state=42)
                 sampled_ids = list(sampled.index)
                 X_df = sampled.reset_index(drop=True)
                 artifact_ids = [
@@ -114,7 +114,7 @@ class ModelTrainer:
 
             isolation_forest = IsolationForest(
                 contamination=0.05,
-                n_estimators=150,
+                n_estimators=100,
                 random_state=42,
                 n_jobs=-1,
             )
@@ -126,7 +126,7 @@ class ModelTrainer:
             y_encoded = label_encoder.fit_transform(y_labels)
 
             random_forest = RandomForestClassifier(
-                n_estimators=80,
+                n_estimators=50,
                 max_depth=10,
                 min_samples_split=5,
                 class_weight="balanced",
@@ -150,7 +150,7 @@ class ModelTrainer:
                 y_binary = np.where(np.arange(n_samples) % 2 == 0, 0, 1)
 
             gradient_boost = GradientBoostingClassifier(
-                n_estimators=70,
+                n_estimators=40,
                 learning_rate=0.05,
                 max_depth=4,
                 subsample=0.8,

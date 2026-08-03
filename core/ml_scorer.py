@@ -30,8 +30,8 @@ class MLScorer:
         """Execute full ML lifecycle and return comprehensive scoring payload."""
         try:
             artifacts = self.db.get_all_artifacts()
-            if len(artifacts) > 8000:
-                artifacts_for_ml = artifacts[:8000]
+            if len(artifacts) > 4000:
+                artifacts_for_ml = artifacts[:4000]
             else:
                 artifacts_for_ml = artifacts
             trainer = ModelTrainer()
