@@ -1,4 +1,8 @@
-"""TEMP verification script: time each ML phase with the speed-tuned hyperparams."""
+"""Time each ML pipeline phase (train / predict / explain).
+
+Usage:  PYTHONPATH= ./.venv/Scripts/python.exe ml_timing.py
+Prints per-phase wall-clock durations so model speed regressions are visible.
+"""
 from __future__ import annotations
 
 import sys
@@ -9,38 +13,44 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from database.db_manager import DBManager
-from ml.explainer import Explainer
-from ml.feature_engineer import FeatureEngineer
-from ml.model_predictor import ModelPredictor
-from ml.model_trainer import ModelTrainer
+from database.db_manager import DBManager  # noqa: E402
+from ml.explainer import Explainer  # noqa: E402
+from ml.feature_engineer import FeatureEngineer  # noqa: E402
+from ml.model_predictor import ModelPredictor  # noqa: E402
+from ml.model_trainer import ModelTrainer  # noqa: E402
 
 
 def phase(name, fn):
     t0 = time.perf_counter()
     result = fn()
-    dt = time.perf_counter() - t0
-    print(f"[timing] {name:<28} {dt:7.1f}s")
+    print(f"[timing] {name:<28} {time.perf_counter() - t0:7.1f}s")
     return result
 
 
 with DBManager() as db:
     artifacts = db.get_all_artifacts()
     artifacts_for_ml = artifacts[:8000]
-    print(f"[timing] artifacts loaded: {len(artifacts)} (using {len(artifacts_for_ml)})")
+    print(f"[timing] artifacts loaded: {len(artifacts)} "
+          f"(using {len(artifacts_for_ml)})")
 
     trainer = ModelTrainer()
     metadata = phase("train", lambda: trainer.train(artifacts_for_ml))
-    print(f"[timing]   train status: {metadata.get('status')}, samples={metadata.get('n_samples')}")
+    print(f"[timing]   train status: {metadata.get('status')}, "
+          f"samples={metadata.get('n_samples')}")
 
     predictor = ModelPredictor()
     phase("load_models", lambda: predictor.load_models())
 
-    prediction_result = phase("predict_all", lambda: predictor.predict_all(artifacts_for_ml))
-    print(f"[timing]   predictions: {len(prediction_result.get('predictions', []))}")
+    prediction_result = phase(
+        "predict_all", lambda: predictor.predict_all(artifacts_for_ml)
+    )
+    print(f"[timing]   predictions: "
+          f"{len(prediction_result.get('predictions', []))}")
 
     fe = FeatureEngineer()
-    feature_matrix = phase("feature_matrix", lambda: fe.artifacts_to_matrix(artifacts_for_ml)[0])
+    feature_matrix = phase(
+        "feature_matrix", lambda: fe.artifacts_to_matrix(artifacts_for_ml)[0]
+    )
     feature_rows = feature_matrix.to_dict(orient="records")
 
     rf_model = predictor.models.get("random_forest")
@@ -54,7 +64,9 @@ with DBManager() as db:
         key=lambda item: float(item.get("combined_risk", 0.0)),
         reverse=True,
     )[:60]
-    indexed_artifacts = {str(a.get("artifact_id", "UNKNOWN")): a for a in artifacts_for_ml}
+    indexed_artifacts = {
+        str(a.get("artifact_id", "UNKNOWN")): a for a in artifacts_for_ml
+    }
     indexed_features = {
         str(a.get("artifact_id", "UNKNOWN")): f
         for a, f in zip(artifacts_for_ml, feature_rows)
@@ -73,7 +85,9 @@ with DBManager() as db:
             )
         return out
 
-    explanations = phase(f"explain {len(anomaly_candidates)} anomalies", do_explain)
+    explanations = phase(
+        f"explain {len(anomaly_candidates)} anomalies", do_explain
+    )
     phase("global_importance", explainer.get_global_feature_importance)
     print(f"[timing] explanations: {len(explanations)}")
-    print(f"[timing] DONE — total ML lifecycle OK")
+    print("[timing] DONE — total ML lifecycle OK")
