@@ -130,7 +130,9 @@ class ModelPredictor:
                 feature_df, _ = self.feature_engineer.artifacts_to_matrix(
                     artifacts_eval
                 )
-                X_all = np.zeros((len(artifacts_eval), len(feature_names)), float)
+                X_all = np.zeros(
+                    (len(artifacts_eval), len(feature_names)), float
+                )
                 for ci, name in enumerate(feature_names):
                     if name in feature_df.columns:
                         X_all[:, ci] = feature_df[name].fillna(0.0).to_numpy()
@@ -145,7 +147,8 @@ class ModelPredictor:
                 rf = self.models["random_forest"]
                 rf_probs = rf.predict_proba(X_scaled)
                 best_idx = np.argmax(rf_probs, axis=1)
-                attack_confidence = rf_probs[np.arange(rf_probs.shape[0]), best_idx]
+                row_idx = np.arange(rf_probs.shape[0])
+                attack_confidence = rf_probs[row_idx, best_idx]
                 label_encoder = self.models["label_encoder"]
                 attack_types = label_encoder.inverse_transform(best_idx)
 
@@ -272,4 +275,3 @@ class ModelPredictor:
 if __name__ == "__main__":
     predictor = ModelPredictor()
     logger.info("Models loaded: %s", predictor.load_models())
-
