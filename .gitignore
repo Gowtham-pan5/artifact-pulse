@@ -38,3 +38,8 @@ artifact-pulse-ui/dist/
 artifact-pulse-ui/.output/
 artifact-pulse-ui/.wrangler/
 artifact-pulse-ui/.tanstack/
+
+# Hermes app internal data — not part of the project
+.hermes/
+# Stray embedded-repo pointer (accidental gitlink)
+artifact-pulse/
