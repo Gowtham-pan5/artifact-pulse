@@ -9,6 +9,7 @@ REM  Starts: Flask API (:5000) + React UI (:5173) + browser
 REM ############################################################
 
 set "PYTHONPATH="
+set "PYTHONHOME="
 
 echo.
 echo  ============================================
@@ -43,7 +44,11 @@ if errorlevel 1 (
 REM ---------- Backend venv + deps ----------
 if not exist ".venv\Scripts\python.exe" (
     echo [*] Creating virtual environment...
-    python -m venv .venv
+    py -3.11 -m venv .venv 2>nul
+    if errorlevel 1 (
+        echo [*] py launcher not found, using python on PATH...
+        python -m venv .venv
+    )
 )
 if not exist ".venv\Lib\site-packages\flask" (
     echo [*] Installing backend dependencies...
@@ -78,7 +83,7 @@ if not errorlevel 1 (
     goto api_ok
 )
 echo [*] Starting Flask API on http://127.0.0.1:5000 ...
-start "Artifact-Pulse API (close to stop)" cmd /k "cd /d %~dp0 && set PYTHONPATH= && .venv\Scripts\python.exe -m web.app"
+start "Artifact-Pulse API (close to stop)" cmd /k "cd /d %~dp0 && set PYTHONPATH= && set PYTHONHOME= && .venv\Scripts\python.exe -m web.app"
 
 echo [*] Waiting for API (first boot can take a while)...
 set API_READY=0
