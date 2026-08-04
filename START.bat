@@ -31,9 +31,10 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+for /f "delims=" %%v in ('node --version') do set "NODE_V=%%v"
 node -e "const [M,m]=process.versions.node.split('.').map(Number);process.exit((M===20&&m>=19)||(M===22&&m>=12)||M>=23?0:1)" >nul 2>nul
 if errorlevel 1 (
-    echo [X] Node version too old ^(v%1^). Vite 7 requires 20.19+ or 22.12+.
+    echo [X] Node version too old ^(%NODE_V%^). Vite 7 requires 20.19+ or 22.12+.
     echo     Download the latest LTS from https://nodejs.org
     pause
     exit /b 1
@@ -69,12 +70,19 @@ if not exist "artifact-pulse-ui\node_modules" (
 )
 
 REM ---------- Start Flask API ----------
+echo [*] Checking if API is already running on :5000 ...
+curl -s -o nul --max-time 2 http://127.0.0.1:5000/api/health >nul 2>nul
+if not errorlevel 1 (
+    echo [OK] API already running, skipping start.
+    set API_READY=1
+    goto api_ok
+)
 echo [*] Starting Flask API on http://127.0.0.1:5000 ...
 start "Artifact-Pulse API (close to stop)" cmd /k "cd /d %~dp0 && set PYTHONPATH= && .venv\Scripts\python.exe -m web.app"
 
-echo [*] Waiting for API...
+echo [*] Waiting for API (first boot can take a while)...
 set API_READY=0
-for /l %%i in (1,1,60) do (
+for /l %%i in (1,1,90) do (
     curl -s -o nul --max-time 2 http://127.0.0.1:5000/api/health >nul 2>nul
     if not errorlevel 1 (
         set API_READY=1
@@ -91,6 +99,13 @@ if not "%API_READY%"=="1" (
 echo [OK] API is up.
 
 REM ---------- Start Vite UI ----------
+echo [*] Checking if UI is already running on :5173 ...
+curl -s -o nul --max-time 2 http://localhost:5173 >nul 2>nul
+if not errorlevel 1 (
+    echo [OK] UI already running, skipping start.
+    set UI_READY=1
+    goto ui_ok
+)
 echo [*] Starting React UI on http://localhost:5173 ...
 start "Artifact-Pulse UI (close to stop)" cmd /k "cd /d %~dp0artifact-pulse-ui && npm run dev"
 
