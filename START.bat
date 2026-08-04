@@ -6,10 +6,9 @@ cd /d "%~dp0"
 REM ############################################################
 REM  Artifact-Pulse — one-click launcher
 REM  Starts: Flask API (:5000) + React UI (:5173) + browser
+REM  NOTE: do NOT "set PYTHONPATH=" here — an empty PYTHONPATH
+REM  crashes Python 3.11 with "failed to make path absolute".
 REM ############################################################
-
-set "PYTHONPATH="
-set "PYTHONHOME="
 
 echo.
 echo  ============================================
@@ -83,7 +82,7 @@ if not errorlevel 1 (
     goto api_ok
 )
 echo [*] Starting Flask API on http://127.0.0.1:5000 ...
-start "Artifact-Pulse API (close to stop)" cmd /k "cd /d %~dp0 && set PYTHONPATH= && set PYTHONHOME= && .venv\Scripts\python.exe -m web.app"
+start "Artifact-Pulse API (close to stop)" cmd /k "cd /d %~dp0 && .venv\Scripts\python.exe -m web.app"
 
 echo [*] Waiting for API (first boot can take a while)...
 set API_READY=0
