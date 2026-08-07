@@ -214,7 +214,7 @@ def artifacts() -> Any:
         data = global_state["artifacts"]
         if layer and layer != "all":
             data = [a for a in data if a.get("source_layer") == layer]
-        return jsonify(data[offset : offset + limit])
+        return jsonify({"artifacts": data[offset : offset + limit]})
     except Exception:
         logger.exception("Artifacts endpoint failed")
         raise
@@ -224,7 +224,7 @@ def artifacts() -> Any:
 def antiforensic() -> Any:
     """Return anti-forensic findings list."""
     try:
-        return jsonify(global_state["antiforensic"])
+        return jsonify({"antiforensic": global_state["antiforensic"]})
     except Exception:
         logger.exception("Antiforensic endpoint failed")
         raise
@@ -234,7 +234,7 @@ def antiforensic() -> Any:
 def clusters() -> Any:
     """Return suspicious clusters list."""
     try:
-        return jsonify(global_state["clusters"])
+        return jsonify({"clusters": global_state["clusters"]})
     except Exception:
         logger.exception("Clusters endpoint failed")
         raise

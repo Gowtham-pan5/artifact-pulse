@@ -23,7 +23,7 @@ function ArtifactsPage() {
 
   const { data, isLoading } = useArtifacts({ limit: 1000 });
   
-  const artifacts = data ? transformArtifacts(data.artifacts) : [];
+  const artifacts = data ? transformArtifacts(data.artifacts ?? []) : [];
   
   const filtered = useMemo(() => {
     if (!artifacts.length) return [];

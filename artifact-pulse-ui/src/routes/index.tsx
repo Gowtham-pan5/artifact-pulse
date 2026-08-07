@@ -27,8 +27,8 @@ function DashboardHome() {
   const loading = statsLoading || clustersLoading || afLoading;
 
   const stats = statsData ? transformStats(statsData) : null;
-  const clusters = clustersData ? transformClusters(clustersData.clusters) : [];
-  const antiForensicEvents = afData ? transformAntiForensic(afData.antiforensic) : [];
+  const clusters = clustersData ? transformClusters(clustersData.clusters ?? []) : [];
+  const antiForensicEvents = afData ? transformAntiForensic(afData.antiforensic ?? []) : [];
   
   const sev = {
     critical: antiForensicEvents.filter(e => e.severity === "critical").length + 4,

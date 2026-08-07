@@ -41,7 +41,7 @@ function AnomaliesPage() {
   const { data, isLoading } = useClusters();
   const [selected, setSelected] = useState<AnomalyPoint | null>(null);
 
-  const clusters = data ? transformClusters(data.clusters) : [];
+  const clusters = data ? transformClusters(data.clusters ?? []) : [];
   const anomalyPoints = clusters.flatMap(c => 
     Array.from({ length: Math.min(c.artifactCount, 20) }, (_, i) => ({
       id: `${c.id}-${i}`,

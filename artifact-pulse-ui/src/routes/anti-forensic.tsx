@@ -25,7 +25,7 @@ const MITRE: Record<string, { id: string; name: string }> = {
 
 function AntiForensicPage() {
   const { data, isLoading } = useAntiForensic();
-  const antiForensicEvents = data ? transformAntiForensic(data.antiforensic) : [];
+  const antiForensicEvents = data ? transformAntiForensic(data.antiforensic ?? []) : [];
 
   if (isLoading) {
     return (
