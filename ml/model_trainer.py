@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
-import pickle
 from typing import Any, Dict, List, Optional
+
+import joblib
 
 import numpy as np
 from sklearn.cluster import KMeans
@@ -23,13 +25,13 @@ class ModelTrainer:
 
     MODELS_DIR = Path(__file__).resolve().parent / "models"
     MODEL_PATHS = {
-        "isolation_forest": MODELS_DIR / "isolation_forest.pkl",
-        "random_forest": MODELS_DIR / "random_forest.pkl",
-        "gradient_boost": MODELS_DIR / "gradient_boost.pkl",
-        "kmeans": MODELS_DIR / "kmeans.pkl",
-        "scaler": MODELS_DIR / "scaler.pkl",
-        "label_encoder": MODELS_DIR / "label_encoder.pkl",
-        "metadata": MODELS_DIR / "metadata.pkl",
+        "isolation_forest": MODELS_DIR / "isolation_forest.joblib",
+        "random_forest": MODELS_DIR / "random_forest.joblib",
+        "gradient_boost": MODELS_DIR / "gradient_boost.joblib",
+        "kmeans": MODELS_DIR / "kmeans.joblib",
+        "scaler": MODELS_DIR / "scaler.joblib",
+        "label_encoder": MODELS_DIR / "label_encoder.joblib",
+        "metadata": MODELS_DIR / "metadata.joblib",
     }
     ATTACK_LABELS = [
         "NORMAL",
@@ -94,8 +96,7 @@ class ModelTrainer:
                     "n_features": 0,
                     "artifact_ids": [],
                 }
-                with self.MODEL_PATHS["metadata"].open("wb") as fh:
-                    pickle.dump(metadata, fh)
+                joblib.dump(metadata, self.MODEL_PATHS["metadata"])
                 return metadata
 
             if n_samples > 2000:
@@ -191,8 +192,7 @@ class ModelTrainer:
                 "metadata": metadata,
             }
             for name, obj in to_save.items():
-                with self.MODEL_PATHS[name].open("wb") as fh:
-                    pickle.dump(obj, fh)
+                joblib.dump(obj, self.MODEL_PATHS[name])
             return metadata
         except Exception:
             logger.exception("Training pipeline failed")
@@ -214,8 +214,7 @@ class ModelTrainer:
             path = ModelTrainer.MODEL_PATHS["metadata"]
             if not path.exists():
                 return None
-            with path.open("rb") as fh:
-                return pickle.load(fh)
+            return joblib.load(path)
         except Exception:
             logger.exception("Failed loading training metadata")
             return None

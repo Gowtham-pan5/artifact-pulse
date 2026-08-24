@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-import pickle
 from typing import Any, Dict, List
+
+import joblib
 
 import numpy as np
 
@@ -33,8 +34,7 @@ class ModelPredictor:
             for name, path in ModelTrainer.MODEL_PATHS.items():
                 if not Path(path).exists():
                     return False
-                with Path(path).open("rb") as fh:
-                    self.models[name] = pickle.load(fh)
+                self.models[name] = joblib.load(path)
             return True
         except Exception:
             logger.exception("Failed loading serialized models")

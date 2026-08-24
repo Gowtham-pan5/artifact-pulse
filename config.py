@@ -16,7 +16,7 @@ DB_PATH = OUTPUT_DIR / "artifact_pulse.db"
 
 CASE_ID = f"AP-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
 TOOL_NAME = "Artifact-Pulse"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip()
 INVESTIGATOR = getpass.getuser()
 ORGANIZATION = "Digital Forensics Unit"
 
@@ -88,6 +88,21 @@ COMPLIANCE_STMTS = [
     "ACPO Good Practice Guide principles observed.",
     "Section 65B digital evidence handling declaration included.",
 ]
+
+# MITRE ATT&CK technique IDs mapped to the internal event_type names used by
+# AntiForensicDetector.  Values are (technique_id, tactic) tuples.
+MITRE_TECHNIQUE_MAP: dict[str, tuple[str, str]] = {
+    "WIPING_TOOL_EXECUTION": ("T1070.004", "Defense Evasion"),
+    "WIPING_TOOL_AUTORUN_SCAN": ("T1547.001", "Persistence"),
+    "BROWSER_HISTORY_WIPE": ("T1070.002", "Defense Evasion"),
+    "PREFETCH_DISABLED": ("T1564.001", "Defense Evasion"),
+    "POWERSHELL_HISTORY_CLEARED": ("T1070.003", "Defense Evasion"),
+    "VSS_DELETION": ("T1490", "Impact"),
+    "TIMESTOMPING": ("T1070.006", "Defense Evasion"),
+    "EVENT_LOG_CLEARING": ("T1070.001", "Defense Evasion"),
+    "SECURITY_LOG_CLEARED": ("T1070.001", "Defense Evasion"),
+    "SYSTEM_LOG_CLEARED": ("T1070.001", "Defense Evasion"),
+}
 
 for directory in (OUTPUT_DIR, REPORT_DIR, LOG_DIR):
     directory.mkdir(parents=True, exist_ok=True)

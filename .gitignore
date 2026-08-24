@@ -24,6 +24,7 @@ report/*.pdf
 .pytest_cache/
 .coverage
 htmlcov/
+coverage.xml
 .tox/
 .noseids
 
@@ -43,3 +44,10 @@ artifact-pulse-ui/.tanstack/
 .hermes/
 # Stray embedded-repo pointer (accidental gitlink)
 artifact-pulse/
+
+# Secrets — NEVER commit the real .env file
+.env
+
+# Trained ML model binaries — regenerated at runtime
+ml/models/*.joblib
+ml/models/*.pkl

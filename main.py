@@ -81,8 +81,15 @@ def run_cli_pipeline() -> None:
 if __name__ == "__main__":
     run_cli_pipeline()
     try:
+        from dotenv import load_dotenv
+        load_dotenv()
         from web.app import app
-        app.run(debug=False, host="127.0.0.1", port=5000)
+        from waitress import serve
+        import os
+        host = os.environ.get("SERVER_HOST", "127.0.0.1")
+        port = int(os.environ.get("SERVER_PORT", "5000"))
+        print(f"\n[*] Starting Artifact-Pulse API on http://{host}:{port}")
+        serve(app, host=host, port=port, threads=4)
     except ImportError as e:
         print(f"\n[!] Flask Web Dashboard failed to start: {e}")
         print("Please activate your virtual environment or install dependencies first:")

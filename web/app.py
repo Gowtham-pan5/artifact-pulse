@@ -1,22 +1,27 @@
-"""Flask web API and dashboard for Artifact-Pulse."""
+"""Flask web API for Artifact-Pulse."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import logging
+import os
 from pathlib import Path
 import sys
 import threading
 from typing import Any, Dict
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, send_file
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required
+
+load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import CASE_ID, TOOL_VERSION
+from config import CASE_ID, MITRE_TECHNIQUE_MAP, TOOL_VERSION
 from core.antiforensic_detector import AntiForensicDetector
 from core.correlation_engine import CorrelationEngine
 from core.eventlog_extractor import EventLogExtractor
@@ -28,9 +33,27 @@ from database.db_manager import DBManager
 from report.pdf_generator import PDFGenerator
 
 logger = logging.getLogger(__name__)
-app = Flask(__name__)
-CORS(app)
 
+app = Flask(__name__)
+
+# ── Security configuration ──────────────────────────────────────────────────
+_jwt_secret = os.environ.get("JWT_SECRET_KEY", "")
+if not _jwt_secret or _jwt_secret == "change-me-generate-a-random-secret":
+    raise RuntimeError(
+        "JWT_SECRET_KEY is not set. Copy .env.example to .env and set a strong secret."
+    )
+app.config["JWT_SECRET_KEY"] = _jwt_secret
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(
+    minutes=int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRES_MINUTES", "60"))
+)
+
+_raw_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+CORS(app, origins=_allowed_origins, supports_credentials=True)
+
+jwt = JWTManager(app)
+
+# ── In-process pipeline state ────────────────────────────────────────────────
 global_state: Dict[str, Any] = {
     "running": False,
     "progress": 0,
@@ -48,8 +71,21 @@ global_state: Dict[str, Any] = {
 state_lock = threading.Lock()
 
 
+# ── Auth ─────────────────────────────────────────────────────────────────────
+@app.post("/api/auth/token")
+def get_token() -> Any:
+    """Issue a JWT for the local analyst session (no password in local-only mode)."""
+    try:
+        token = create_access_token(identity="analyst")
+        return jsonify({"access_token": token}), 200
+    except Exception:
+        logger.exception("Token issuance failed")
+        raise
+
+
+# ── Pipeline ─────────────────────────────────────────────────────────────────
 def _run_pipeline() -> None:
-    """Run extraction pipeline in background thread safely."""
+    """Run extraction pipeline in background thread."""
     try:
         with DBManager() as db:
             with state_lock:
@@ -86,9 +122,7 @@ def _run_pipeline() -> None:
             with state_lock:
                 global_state["stage"] = "ml_train"
                 global_state["progress"] = 90
-                global_state["message"] = (
-                    "Training Scikit-learn models (IF + RF + GB + KMeans)..."
-                )
+                global_state["message"] = "Training Scikit-learn models (IF + RF + GB + KMeans)..."
             with state_lock:
                 global_state["stage"] = "ml_predict"
                 global_state["progress"] = 93
@@ -129,9 +163,9 @@ def _run_pipeline() -> None:
             global_state["stage"] = "error"
 
 
+# ── Routes ───────────────────────────────────────────────────────────────────
 @app.get("/")
 def index() -> str:
-    """Render home dashboard page."""
     try:
         return render_template("index.html")
     except Exception:
@@ -141,7 +175,6 @@ def index() -> str:
 
 @app.get("/dashboard")
 def dashboard() -> str:
-    """Render alternate dashboard page."""
     try:
         return render_template("dashboard.html")
     except Exception:
@@ -151,7 +184,7 @@ def dashboard() -> str:
 
 @app.get("/api/health")
 def health() -> Any:
-    """Return API health status payload."""
+    """Public health probe — no auth required."""
     try:
         return jsonify({"status": "ok", "version": TOOL_VERSION, "case_id": CASE_ID})
     except Exception:
@@ -159,23 +192,52 @@ def health() -> Any:
         raise
 
 
+@app.get("/api/health/detailed")
+@jwt_required()
+def health_detailed() -> Any:
+    """Detailed liveness check including DB and pipeline state."""
+    try:
+        db_ok = False
+        db_artifact_count = 0
+        try:
+            with DBManager() as db:
+                db_ok = True
+                db_artifact_count = len(db.get_all_artifacts())
+        except Exception:
+            logger.warning("DB health check failed")
+
+        with state_lock:
+            pipeline_stage = global_state["stage"]
+            pipeline_running = global_state["running"]
+
+        return jsonify({
+            "status": "ok",
+            "version": TOOL_VERSION,
+            "case_id": CASE_ID,
+            "db": {"connected": db_ok, "artifact_count": db_artifact_count},
+            "pipeline": {"stage": pipeline_stage, "running": pipeline_running},
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
+    except Exception:
+        logger.exception("Detailed health endpoint failed")
+        raise
+
+
 @app.post("/api/extraction/start")
+@jwt_required()
 def start_extraction() -> Any:
-    """Start background extraction if not currently running."""
     try:
         with state_lock:
             if global_state["running"]:
                 return jsonify({"error": "already running"}), 409
-            global_state.update(
-                {
-                    "running": True,
-                    "progress": 0,
-                    "stage": "starting",
-                    "message": "Pipeline starting",
-                    "started_at": datetime.now(UTC).isoformat(),
-                    "error": None,
-                }
-            )
+            global_state.update({
+                "running": True,
+                "progress": 0,
+                "stage": "starting",
+                "message": "Pipeline starting",
+                "started_at": datetime.now(UTC).isoformat(),
+                "error": None,
+            })
         threading.Thread(target=_run_pipeline, daemon=True).start()
         return jsonify({"status": "started", "case_id": CASE_ID}), 202
     except Exception:
@@ -184,45 +246,50 @@ def start_extraction() -> Any:
 
 
 @app.get("/api/extraction/status")
+@jwt_required()
 def extraction_status() -> Any:
-    """Return extraction execution state for polling clients."""
     try:
         with state_lock:
-            return jsonify(
-                {
-                    "running": global_state["running"],
-                    "progress": global_state["progress"],
-                    "stage": global_state["stage"],
-                    "message": global_state["message"],
-                    "started_at": global_state["started_at"],
-                    "error": global_state["error"],
-                    "ml_scores": global_state["ml_scores"],
-                }
-            )
+            return jsonify({
+                "running": global_state["running"],
+                "progress": global_state["progress"],
+                "stage": global_state["stage"],
+                "message": global_state["message"],
+                "started_at": global_state["started_at"],
+                "error": global_state["error"],
+                "ml_scores": global_state["ml_scores"],
+            })
     except Exception:
         logger.exception("Status endpoint failed")
         raise
 
 
 @app.get("/api/artifacts")
+@jwt_required()
 def artifacts() -> Any:
-    """Return paginated artifact list with optional layer filter."""
     try:
-        layer = request.args.get("layer")
-        limit = min(int(request.args.get("limit", 100)), 1000)
-        offset = int(request.args.get("offset", 0))
+        layer = request.args.get("layer", "")
+        try:
+            limit = min(int(request.args.get("limit", 100)), 1000)
+            offset = max(int(request.args.get("offset", 0)), 0)
+        except (ValueError, TypeError):
+            return jsonify({"error": "limit and offset must be integers"}), 400
+
         data = global_state["artifacts"]
         if layer and layer != "all":
+            allowed_layers = {"filesystem", "eventlog", "process", "antiforensic", "registry"}
+            if layer not in allowed_layers:
+                return jsonify({"error": f"unknown layer: {layer}"}), 400
             data = [a for a in data if a.get("source_layer") == layer]
-        return jsonify({"artifacts": data[offset : offset + limit]})
+        return jsonify({"artifacts": data[offset: offset + limit], "total": len(data)})
     except Exception:
         logger.exception("Artifacts endpoint failed")
         raise
 
 
 @app.get("/api/antiforensic")
+@jwt_required()
 def antiforensic() -> Any:
-    """Return anti-forensic findings list."""
     try:
         return jsonify({"antiforensic": global_state["antiforensic"]})
     except Exception:
@@ -231,8 +298,8 @@ def antiforensic() -> Any:
 
 
 @app.get("/api/clusters")
+@jwt_required()
 def clusters() -> Any:
-    """Return suspicious clusters list."""
     try:
         return jsonify({"clusters": global_state["clusters"]})
     except Exception:
@@ -241,54 +308,45 @@ def clusters() -> Any:
 
 
 @app.get("/api/stats")
+@jwt_required()
 def stats() -> Any:
-    """Return aggregate counts across extracted data categories."""
     try:
-        artifacts = global_state["artifacts"]
-        return jsonify(
-            {
-                "layer_breakdown": _layer_breakdown(artifacts),
-                "total": len(artifacts),
-                "af_count": len(global_state["antiforensic"]),
-                "high_risk_count": len(
-                    [a for a in artifacts if float(a.get("risk_weight") or 0) >= 0.7]
-                ),
-                "total_artifacts": len(artifacts),
-                "antiforensic": len(global_state["antiforensic"]),
-                "high_risk": len(
-                    [a for a in artifacts if float(a.get("risk_weight") or 0) >= 0.7]
-                ),
-                "clusters": len(global_state["clusters"]),
-            }
-        )
+        art = global_state["artifacts"]
+        return jsonify({
+            "layer_breakdown": _layer_breakdown(art),
+            "total_artifacts": len(art),
+            "af_count": len(global_state["antiforensic"]),
+            "high_risk_count": len([a for a in art if float(a.get("risk_weight") or 0) >= 0.7]),
+            "antiforensic": len(global_state["antiforensic"]),
+            "high_risk": len([a for a in art if float(a.get("risk_weight") or 0) >= 0.7]),
+            "clusters": len(global_state["clusters"]),
+        })
     except Exception:
         logger.exception("Stats endpoint failed")
         raise
 
 
 @app.get("/api/chain/verify")
+@jwt_required()
 def chain_verify() -> Any:
-    """Run chain verification against DB and return integrity payload."""
     try:
         with DBManager() as db:
             integrity, message = db.verify_chain_integrity()
             master_hash = db.compute_master_hash()
-        return jsonify(
-            {
-                "integrity": integrity,
-                "status": "INTACT" if integrity else "TAMPERED",
-                "message": message,
-                "master_hash": master_hash,
-            }
-        )
+        return jsonify({
+            "integrity": integrity,
+            "status": "INTACT" if integrity else "TAMPERED",
+            "message": message,
+            "master_hash": master_hash,
+        })
     except Exception:
         logger.exception("Chain verification failed")
         raise
 
 
 @app.post("/api/report/generate")
+@jwt_required()
 def generate_report() -> Any:
-    """Generate forensic PDF report from current in-memory state."""
     try:
         pdf = PDFGenerator(
             global_state["artifacts"],
@@ -306,8 +364,8 @@ def generate_report() -> Any:
 
 
 @app.get("/api/report/download")
+@jwt_required()
 def download_report() -> Any:
-    """Download generated PDF report as attachment."""
     try:
         path = global_state.get("report_path")
         if not path:
@@ -319,8 +377,8 @@ def download_report() -> Any:
 
 
 @app.get("/api/ml/feature-importance")
+@jwt_required()
 def ml_feature_importance() -> Any:
-    """Return global feature importance from latest ML scoring run."""
     try:
         return jsonify(global_state.get("ml_scores", {}).get("global_feature_importance", []))
     except Exception:
@@ -329,8 +387,8 @@ def ml_feature_importance() -> Any:
 
 
 @app.get("/api/ml/explanations")
+@jwt_required()
 def ml_explanations() -> Any:
-    """Return top anomaly explanations from latest ML scoring run."""
     try:
         return jsonify(global_state.get("ml_scores", {}).get("top_anomaly_explanations", []))
     except Exception:
@@ -339,8 +397,8 @@ def ml_explanations() -> Any:
 
 
 @app.get("/api/ml/attack-breakdown")
+@jwt_required()
 def ml_attack_breakdown() -> Any:
-    """Return attack-type distribution from latest ML scoring run."""
     try:
         return jsonify(global_state.get("ml_scores", {}).get("attack_type_breakdown", {}))
     except Exception:
@@ -349,8 +407,8 @@ def ml_attack_breakdown() -> Any:
 
 
 @app.get("/api/ml/training-info")
+@jwt_required()
 def ml_training_info() -> Any:
-    """Return model training metadata from latest ML scoring run."""
     try:
         return jsonify(global_state.get("ml_scores", {}).get("training_metadata", {}))
     except Exception:
@@ -358,8 +416,8 @@ def ml_training_info() -> Any:
         raise
 
 
+# ── Helpers ──────────────────────────────────────────────────────────────────
 def _severity_from_risk(risk: float) -> str:
-    """Derive a display severity from an artifact's risk weight."""
     if risk >= 0.9:
         return "critical"
     if risk >= 0.7:
@@ -370,7 +428,6 @@ def _severity_from_risk(risk: float) -> str:
 
 
 def _enrich_artifact(row: dict) -> dict:
-    """Map a raw artifacts DB row to the frontend BackendArtifact contract."""
     return {
         "id": row.get("artifact_id") or str(row.get("id") or ""),
         "timestamp": row.get("event_time"),
@@ -385,18 +442,20 @@ def _enrich_artifact(row: dict) -> dict:
 
 
 def _enrich_antiforensic(row: dict) -> dict:
-    """Map a raw antiforensic DB row to the API contract."""
+    technique = row.get("event_type", "")
+    mitre = MITRE_TECHNIQUE_MAP.get(technique, ("", ""))
     return {
         "id": str(row.get("id") or ""),
         "timestamp": row.get("event_time"),
-        "technique": row.get("event_type"),
+        "technique": technique,
         "evidence": row.get("evidence"),
         "severity": row.get("severity"),
+        "mitre_technique_id": mitre[0],
+        "mitre_tactic": mitre[1],
     }
 
 
 def _layer_breakdown(artifacts: list[dict[str, Any]]) -> dict[str, int]:
-    """Compute artifact counts grouped by source layer."""
     try:
         breakdown: dict[str, int] = {}
         for artifact in artifacts:
@@ -408,25 +467,25 @@ def _layer_breakdown(artifacts: list[dict[str, Any]]) -> dict[str, int]:
         return {}
 
 
+# ── Error handlers ────────────────────────────────────────────────────────────
 @app.errorhandler(404)
 def not_found(_: Any) -> Any:
-    """Handle 404 HTTP errors with JSON payload."""
-    try:
-        return jsonify({"error": "Not found"}), 404
-    except Exception:
-        logger.exception("404 handler failed")
-        raise
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.errorhandler(422)
+def unprocessable(_: Any) -> Any:
+    return jsonify({"error": "Unprocessable request"}), 422
 
 
 @app.errorhandler(500)
 def server_error(_: Any) -> Any:
-    """Handle 500 HTTP errors with JSON payload."""
-    try:
-        return jsonify({"error": "Internal server error"}), 500
-    except Exception:
-        logger.exception("500 handler failed")
-        raise
+    return jsonify({"error": "Internal server error"}), 500
 
 
 if __name__ == "__main__":
-    app.run(debug=False, host="127.0.0.1", port=5000, threaded=True)
+    from waitress import serve
+    host = os.environ.get("SERVER_HOST", "127.0.0.1")
+    port = int(os.environ.get("SERVER_PORT", "5000"))
+    logger.info("Starting Artifact-Pulse API on %s:%s via waitress", host, port)
+    serve(app, host=host, port=port, threads=4)
