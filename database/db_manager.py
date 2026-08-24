@@ -47,6 +47,7 @@ class DBManager:
             if db_path is None:
                 db_path = DB_PATH
             self.db_path = db_path if isinstance(db_path, Path) else Path(db_path)
+            self._last_chain_hash: Optional[str] = None
             self._conn = self._connect()
             self._init_schema()
             self._init_case()
@@ -61,7 +62,7 @@ class DBManager:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute("PRAGMA foreign_keys=ON;")
-            conn.execute("PRAGMA synchronous=FULL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
             return conn
         except Exception:
             logger.exception("Unable to connect to SQLite database")
@@ -173,10 +174,13 @@ class DBManager:
     def _get_last_chain_hash(self) -> str:
         """Get latest chain hash or genesis when table is empty."""
         try:
+            if self._last_chain_hash is not None:
+                return self._last_chain_hash
             row = self._conn.execute(
                 "SELECT chain_hash FROM artifacts ORDER BY id DESC LIMIT 1"
             ).fetchone()
-            return row["chain_hash"] if row else CHAIN_GENESIS
+            self._last_chain_hash = row["chain_hash"] if row else CHAIN_GENESIS
+            return self._last_chain_hash
         except Exception:
             logger.exception("Failed to read last chain hash")
             raise
@@ -202,16 +206,16 @@ class DBManager:
         try:
             if risk_weight < 0.0 or risk_weight > 1.0:
                 raise ValueError("risk_weight must be between 0.0 and 1.0")
-            
+
             # Convert datetime to ISO string if needed
             if isinstance(event_time, datetime):
                 event_time = event_time.isoformat()
             elif event_time is None:
                 event_time = datetime.now(UTC).isoformat()
-            
+
             # Generate UUID artifact_id
             artifact_id = str(uuid.uuid4())
-            
+
             content_text = (
                 content
                 if isinstance(content, str)
@@ -220,7 +224,7 @@ class DBManager:
             content_hash = self._hash_content(content_text)
             prev_hash = self._get_last_chain_hash()
             chain_hash = self._compute_chain_hash(prev_hash, content_hash)
-            
+
             with self._conn:
                 self._conn.execute(
                     """
@@ -245,6 +249,7 @@ class DBManager:
                         TOOL_VERSION,
                     ),
                 )
+            self._last_chain_hash = chain_hash
             return artifact_id
         except Exception:
             logger.exception("Failed to insert artifact")
