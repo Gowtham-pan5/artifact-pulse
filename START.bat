@@ -17,8 +17,23 @@ echo  ============================================
 echo.
 
 REM ---------- Python check ----------
-where python >nul 2>nul
-if errorlevel 1 (
+set "PY_CMD="
+where py >nul 2>nul
+if not errorlevel 1 (
+    set "PY_CMD=py"
+) else (
+    where python >nul 2>nul
+    if not errorlevel 1 (
+        set "PY_CMD=python"
+    ) else (
+        where python3 >nul 2>nul
+        if not errorlevel 1 (
+            set "PY_CMD=python3"
+        )
+    )
+)
+
+if "%PY_CMD%"=="" (
     echo [X] Python not found on PATH. Install Python 3.11+ from https://python.org
     pause
     exit /b 1
@@ -43,10 +58,11 @@ if errorlevel 1 (
 REM ---------- Backend venv + deps ----------
 if not exist ".venv\Scripts\python.exe" (
     echo [*] Creating virtual environment...
-    py -3.11 -m venv .venv 2>nul
+    %PY_CMD% -m venv .venv
     if errorlevel 1 (
-        echo [*] py launcher not found, using python on PATH...
-        python -m venv .venv
+        echo [X] Failed to create virtual environment with %PY_CMD%.
+        pause
+        exit /b 1
     )
 )
 if not exist ".venv\Lib\site-packages\flask" (
