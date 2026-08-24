@@ -77,6 +77,14 @@ function transformBackendAntiForensic(e: BackendAntiForensicEvent): AntiForensic
 /**
  * React Query hooks for API data
  */
+export function useHealth() {
+  return useQuery({
+    queryKey: ["health"],
+    queryFn: api.getHealth,
+    staleTime: 60000,
+  });
+}
+
 export function useStats() {
   return useQuery({
     queryKey: ["stats"],

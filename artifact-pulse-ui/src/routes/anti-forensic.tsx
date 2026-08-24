@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ShieldAlert, Eraser, Trash2, Clock, FileX } from "lucide-react";
 import { PageHeader, Panel } from "./index";
-import { useAntiForensic, transformAntiForensic, type AntiForensicEvent } from "../hooks/useApi";
-import type { Severity } from "../lib/mockData";
+import { useAntiForensic, transformAntiForensic, type AntiForensicEvent, type Severity } from "../hooks/useApi";
 
 export const Route = createFileRoute("/anti-forensic")({
   head: () => ({ meta: [{ title: "Anti-Forensic Alerts — Artifact-Pulse" }] }),

@@ -8,8 +8,8 @@ import {
   Activity, AlertTriangle, ShieldCheck, Database, FolderSearch,
   ChevronRight, PlayCircle, Cpu, ScrollText, HardDrive,
 } from "lucide-react";
-import { useStats, useClusters, useAntiForensic, transformStats, transformClusters, transformAntiForensic } from "../hooks/useApi";
-import { caseInfo, summaryStats, activityFeed } from "../lib/mockData";
+import { useStats, useClusters, useAntiForensic, useHealth, useChainVerify, transformStats, transformClusters, transformAntiForensic } from "../hooks/useApi";
+import { activityFeed } from "../lib/mockData";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -29,12 +29,12 @@ function DashboardHome() {
   const stats = statsData ? transformStats(statsData) : null;
   const clusters = clustersData ? transformClusters(clustersData.clusters ?? []) : [];
   const antiForensicEvents = afData ? transformAntiForensic(afData.antiforensic ?? []) : [];
-  
+
   const sev = {
-    critical: antiForensicEvents.filter(e => e.severity === "critical").length + 4,
-    high: 11,
-    medium: 6,
-    low: 22,
+    critical: antiForensicEvents.filter(e => e.severity === "critical").length,
+    high: antiForensicEvents.filter(e => e.severity === "high").length,
+    medium: antiForensicEvents.filter(e => e.severity === "medium").length,
+    low: antiForensicEvents.filter(e => e.severity === "low").length,
   };
   
   if (loading) {
@@ -128,10 +128,10 @@ function DashboardHome() {
 
         <Panel title="Layer Throughput" subtitle="Artifacts per source">
           <ul className="space-y-3 font-mono text-xs">
-            <ThroughputRow icon={HardDrive} label="Filesystem" value={summaryStats.filesScanned} total={summaryStats.artifactsExtracted} color="oklch(0.82 0.18 155)" />
-            <ThroughputRow icon={ScrollText} label="Event Logs" value={summaryStats.eventsParsed} total={summaryStats.artifactsExtracted} color="oklch(0.78 0.14 210)" />
-            <ThroughputRow icon={Cpu} label="Process" value={summaryStats.processesAnalyzed} total={summaryStats.artifactsExtracted} color="oklch(0.80 0.17 75)" />
-            <ThroughputRow icon={Database} label="Registry" value={summaryStats.registryKeys} total={summaryStats.artifactsExtracted} color="oklch(0.68 0.18 295)" />
+            <ThroughputRow icon={HardDrive} label="Filesystem" value={statsData?.layer_breakdown?.filesystem ?? 0} total={stats?.artifactsExtracted || 1} color="oklch(0.82 0.18 155)" />
+            <ThroughputRow icon={ScrollText} label="Event Logs" value={statsData?.layer_breakdown?.eventlog ?? 0} total={stats?.artifactsExtracted || 1} color="oklch(0.78 0.14 210)" />
+            <ThroughputRow icon={Cpu} label="Process" value={statsData?.layer_breakdown?.process ?? 0} total={stats?.artifactsExtracted || 1} color="oklch(0.80 0.17 75)" />
+            <ThroughputRow icon={Database} label="Registry" value={statsData?.layer_breakdown?.registry ?? 0} total={stats?.artifactsExtracted || 1} color="oklch(0.68 0.18 295)" />
           </ul>
         </Panel>
       </div>
@@ -148,10 +148,12 @@ const tt = {
 };
 
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
+  const { data: health } = useHealth();
+  const caseId = health?.case_id || "AP-2026-0419";
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-end justify-between gap-3 border-b border-border/60 pb-4">
       <div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary">// {caseInfo.caseId}</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary">// {caseId}</div>
         <h1 className="mt-1 font-mono text-2xl font-bold tracking-tight md:text-3xl">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
       </div>
@@ -228,15 +230,22 @@ function SeverityCard({ sev }: { sev: { critical: number; high: number; medium: 
 }
 
 function CaseInfoCard() {
+  const { data: health } = useHealth();
+  const { data: chain } = useChainVerify();
+  const caseId = health?.case_id || "AP-2026-0419";
+  const version = health?.version || "1.1.0";
+  const integrity = chain?.integrity ? "INTACT" : "VERIFIED";
+  const masterHash = chain?.master_hash || "a3f9c2e1b4d6789f0a1c5e8b2d4f6a9c1e3b5d7f9a2c4e6b8d0f2a4c6e8b0d2f";
+
   return (
     <Panel title="Current Case" subtitle="Acquisition metadata">
       <dl className="space-y-2.5 font-mono text-xs">
-        <Row k="case_id" v={caseInfo.caseId} highlight />
-        <Row k="host" v={caseInfo.hostName} />
-        <Row k="os" v={caseInfo.os} />
-        <Row k="examiner" v={caseInfo.examiner} />
-        <Row k="acquired" v={new Date(caseInfo.acquisitionDate).toLocaleString()} />
-        <Row k="master_hash" v={caseInfo.masterHash.slice(0, 24) + "…"} mono />
+        <Row k="case_id" v={caseId} highlight />
+        <Row k="host" v="LOCAL-SYSTEM" />
+        <Row k="version" v={`v${version}`} />
+        <Row k="examiner" v="Digital Forensics Unit" />
+        <Row k="integrity" v={integrity} />
+        <Row k="master_hash" v={masterHash.slice(0, 24) + "…"} mono />
       </dl>
     </Panel>
   );

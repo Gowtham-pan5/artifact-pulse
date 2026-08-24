@@ -1,7 +1,11 @@
 import { ChevronDown, Search, Bell, ShieldCheck } from "lucide-react";
-import { caseInfo } from "../lib/mockData";
+import { useHealth } from "../hooks/useApi";
 
 export function TopBar() {
+  const { data: health } = useHealth();
+  const caseId = health?.case_id || "AP-2026-0419";
+  const hostName = health ? "LOCAL-SYSTEM" : "DESKTOP-WIN10-DEVOPS";
+
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/60 bg-background/80 px-4 backdrop-blur-xl md:px-6">
       {/* Case selector */}
@@ -10,9 +14,9 @@ export function TopBar() {
         className="group flex items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 font-mono text-xs hover:border-primary/40"
       >
         <span className="text-muted-foreground">case:</span>
-        <span className="text-primary">{caseInfo.caseId}</span>
+        <span className="text-primary">{caseId}</span>
         <span className="text-muted-foreground">·</span>
-        <span className="text-foreground">{caseInfo.hostName}</span>
+        <span className="text-foreground">{hostName}</span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:translate-y-0.5" />
       </button>
 

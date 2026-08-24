@@ -6,7 +6,8 @@ import {
   Play, RotateCcw, ChevronRight, CheckCircle2, Circle, Loader2, XCircle,
 } from "lucide-react";
 import { PageHeader, Panel } from "./index";
-import { pipelineSteps, type PipelineStatus, caseInfo } from "../lib/mockData";
+import { useHealth } from "../hooks/useApi";
+import { pipelineSteps, type PipelineStatus } from "../lib/mockData";
 
 export const Route = createFileRoute("/pipeline")({
   head: () => ({ meta: [{ title: "Pipeline Runner — Artifact-Pulse" }] }),
@@ -29,6 +30,8 @@ const STAGE_TO_STEP: Record<string, number> = {
 };
 
 function PipelinePage() {
+  const { data: health } = useHealth();
+  const hostName = health ? "LOCAL-SYSTEM" : "localhost";
   const [statuses, setStatuses] = useState<PipelineStatus[]>(pipelineSteps.map(() => "pending"));
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -90,7 +93,7 @@ function PipelinePage() {
   function run() {
     reset();
     setRunning(true);
-    toast.success("Pipeline started", { description: `target: ${caseInfo.hostName}` });
+    toast.success("Pipeline started", { description: `target: ${hostName}` });
     fetch("/api/extraction/start", { method: "POST" })
       .then(async res => {
         if (res.status === 409) {
@@ -140,7 +143,7 @@ function PipelinePage() {
         }
       />
 
-      <Panel title="Overall Progress" subtitle={`target endpoint: ${caseInfo.hostName} · 7 stages`}>
+      <Panel title="Overall Progress" subtitle={`target endpoint: ${hostName} · 7 stages`}>
         <div className="flex items-center gap-4">
           <div className="flex-1">
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">

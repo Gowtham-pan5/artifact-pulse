@@ -5,11 +5,70 @@
 
 const API_BASE = '/api';
 
-async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
+let cachedToken: string | null = typeof window !== 'undefined' ? localStorage.getItem('ap_jwt_token') : null;
+
+async function getOrFetchToken(): Promise<string> {
+  if (cachedToken) {
+    return cachedToken;
+  }
+
+  const res = await fetch(`${API_BASE}/auth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
   });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch auth token: ${res.statusText}`);
+  }
+  const data = await res.json();
+  const token = data.access_token;
+  if (!token) {
+    throw new Error('Auth token not returned from server');
+  }
+  cachedToken = token;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('ap_jwt_token', token);
+  }
+  return token;
+}
+
+async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
+  let headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options?.headers as Record<string, string>) || {}),
+  };
+
+  if (path !== '/auth/token') {
+    try {
+      const token = await getOrFetchToken();
+      headers['Authorization'] = `Bearer ${token}`;
+    } catch (err) {
+      console.error('Error getting auth token:', err);
+    }
+  }
+
+  let res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (res.status === 401 && path !== '/auth/token') {
+    // Token might have expired. Clear cache and try once more.
+    cachedToken = null;
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('ap_jwt_token');
+    }
+    try {
+      const token = await getOrFetchToken();
+      headers['Authorization'] = `Bearer ${token}`;
+      res = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+      });
+    } catch (err) {
+      console.error('Error refreshing auth token on 401:', err);
+    }
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || `API error ${res.status}`);
@@ -18,6 +77,9 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // Health / Case Info
+  getHealth: () => fetchJson<{ status: string; version: string; case_id: string }>('/health'),
+
   // Dashboard / Summary
   getStats: () => fetchJson<{
     layer_breakdown: Record<string, number>;
