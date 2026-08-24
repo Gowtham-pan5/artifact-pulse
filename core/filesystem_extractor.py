@@ -170,28 +170,40 @@ class FilesystemExtractor:
         """Extract recycle-bin metadata files from common drive roots."""
         count = 0
         try:
-            for drive in [Path("C:/"), Path("D:/"), Path("E:/")]:
-                rb = drive / "$Recycle.Bin"
-                if not rb.exists():
+            import os
+            sys_drive = os.environ.get("SystemDrive", "C:")
+            drives = [Path(f"{sys_drive}/")]
+            for drive in drives:
+                try:
+                    rb = drive / "$Recycle.Bin"
+                    if not rb.is_dir():
+                        continue
+                    for sid_dir in rb.iterdir():
+                        if not sid_dir.is_dir():
+                            continue
+                        for i_file in sid_dir.glob("$I*"):
+                            try:
+                                payload = {
+                                    "filename": i_file.name,
+                                    "original_path": "unknown",
+                                    "size": i_file.stat().st_size,
+                                    "deletion_time": datetime.fromtimestamp(
+                                        i_file.stat().st_mtime, tz=UTC
+                                    ).isoformat(),
+                                }
+                                self.db.insert_artifact(
+                                    "filesystem",
+                                    "recycle_bin",
+                                    str(i_file),
+                                    payload,
+                                    payload["deletion_time"],
+                                    0.5,
+                                )
+                                count += 1
+                            except Exception:
+                                continue
+                except Exception:
                     continue
-                for i_file in rb.rglob("$I*"):
-                    payload = {
-                        "filename": i_file.name,
-                        "original_path": "unknown",
-                        "size": i_file.stat().st_size,
-                        "deletion_time": datetime.fromtimestamp(
-                            i_file.stat().st_mtime, tz=UTC
-                        ).isoformat(),
-                    }
-                    self.db.insert_artifact(
-                        "filesystem",
-                        "recycle_bin",
-                        str(i_file),
-                        payload,
-                        payload["deletion_time"],
-                        0.5,
-                    )
-                    count += 1
             return count
         except Exception:
             logger.exception("Failed recycle-bin extraction")
