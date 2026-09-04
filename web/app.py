@@ -34,7 +34,7 @@ from report.pdf_generator import PDFGenerator
 
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="../artifact-pulse-ui/dist", static_url_path="/")
 
 # ── Security configuration ──────────────────────────────────────────────────
 _jwt_secret = os.environ.get("JWT_SECRET_KEY", "")
@@ -52,6 +52,15 @@ _allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 CORS(app, origins=_allowed_origins, supports_credentials=True)
 
 jwt = JWTManager(app)
+
+# ── Static File Serving ──────────────────────────────────────────────────────
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_frontend(path: str) -> Any:
+    """Serve the React app's static files, fallback to index.html for SPA routes."""
+    if path != "" and os.path.exists(app.static_folder + "/" + path):
+        return send_file(app.static_folder + "/" + path)
+    return send_file(app.static_folder + "/index.html")
 
 # ── In-process pipeline state ────────────────────────────────────────────────
 global_state: Dict[str, Any] = {

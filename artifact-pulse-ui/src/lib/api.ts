@@ -112,8 +112,10 @@ export const api = {
   // Chain of Custody
   verifyChain: () => fetchJson<{ integrity: boolean; status: string; message: string; master_hash: string }>('/chain/verify'),
 
-  // Pipeline
+  // Pipeline / Extraction
   getPipelineStatus: () => fetchJson<{ steps: any[] }>('/pipeline/status'),
+  startExtraction: () => fetchJson<{ status: string; case_id: string }>('/extraction/start', { method: 'POST' }),
+  getExtractionStatus: () => fetchJson<BackendExtractionStatus>('/extraction/status'),
 
   // ML
   getMlFeatureImportance: () => fetchJson<any[]>('/ml/feature-importance'),
@@ -167,4 +169,19 @@ export interface BackendStats {
   antiforensic: number;
   high_risk: number;
   clusters: number;
+}
+
+export interface BackendExtractionStatus {
+  running: boolean;
+  progress: number;
+  stage: string;
+  message: string;
+  started_at: string | null;
+  error: string | null;
+  ml_scores: any;
+}
+
+export interface BackendExtractionStart {
+  status: string;
+  case_id: string;
 }

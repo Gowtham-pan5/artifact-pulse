@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { api, type BackendArtifact, type BackendCluster, type BackendAntiForensicEvent, type BackendStats } from "../lib/api";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { api, type BackendArtifact, type BackendCluster, type BackendAntiForensicEvent, type BackendStats, type BackendExtractionStatus } from "../lib/api";
 import type { Artifact, Layer, Severity, Cluster, AntiForensicEvent } from "../lib/mockData";
 export type { Artifact, Layer, Severity, Cluster, AntiForensicEvent } from "../lib/mockData";
 
@@ -122,6 +122,21 @@ export function useChainVerify() {
     queryKey: ["chain-verify"],
     queryFn: api.verifyChain,
     staleTime: 60000,
+  });
+}
+
+export function useExtractionStatus(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["extraction-status"],
+    queryFn: api.getExtractionStatus,
+    staleTime: 5000,
+    refetchInterval: enabled ? 2000 : false,
+  });
+}
+
+export function useStartExtraction() {
+  return useMutation({
+    mutationFn: api.startExtraction,
   });
 }
 

@@ -75,19 +75,18 @@ if not exist ".venv\Lib\site-packages\flask" (
     )
 )
 
-REM ---------- Frontend deps ----------
-if not exist "artifact-pulse-ui\node_modules" (
-    echo [*] Installing frontend dependencies ^(npm install^)...
-    pushd artifact-pulse-ui
-    call npm install --legacy-peer-deps
-    if errorlevel 1 (
-        popd
-        echo [X] npm install failed.
-        pause
-        exit /b 1
-    )
+REM ---------- Frontend Build ----------
+echo [*] Building frontend...
+pushd artifact-pulse-ui
+call npm install --legacy-peer-deps
+call npm run build
+if errorlevel 1 (
     popd
+    echo [X] Frontend build failed.
+    pause
+    exit /b 1
 )
+popd
 
 REM ---------- Start Flask API ----------
 echo [*] Checking if API is already running on :5000 ...
@@ -118,43 +117,14 @@ if not "%API_READY%"=="1" (
 )
 echo [OK] API is up.
 
-REM ---------- Start Vite UI ----------
-echo [*] Checking if UI is already running on :5173 ...
-curl -s -o nul --max-time 2 http://localhost:5173 >nul 2>nul
-if not errorlevel 1 (
-    echo [OK] UI already running, skipping start.
-    set UI_READY=1
-    goto ui_ok
-)
-echo [*] Starting React UI on http://localhost:5173 ...
-start "Artifact-Pulse UI (close to stop)" cmd /k "cd /d %~dp0artifact-pulse-ui && npm run dev"
-
-echo [*] Waiting for UI...
-set UI_READY=0
-for /l %%i in (1,1,90) do (
-    curl -s -o nul --max-time 2 http://localhost:5173 >nul 2>nul
-    if not errorlevel 1 (
-        set UI_READY=1
-        goto ui_ok
-    )
-    timeout /t 1 /nobreak >nul
-)
-:ui_ok
-if not "%UI_READY%"=="1" (
-    echo [X] UI did not respond on :5173 within 90s. Check the UI window.
-    pause
-    exit /b 1
-)
-echo [OK] UI is up.
-
 echo.
 echo  ============================================
-echo    READY ^| opening http://localhost:5173
+echo    READY ^| opening http://127.0.0.1:5000
 echo    Flow: click "run pipeline" to scan THIS
 echo          machine, then browse artifacts,
 echo          anomalies, chain ^& reports.
-echo    Close the two windows to stop the servers.
+echo    Close the API window to stop the server.
 echo  ============================================
 echo.
-start "" http://localhost:5173
+start "" http://127.0.0.1:5000
 endlocal
