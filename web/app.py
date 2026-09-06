@@ -402,13 +402,18 @@ def generate_report() -> Any:
 
 
 @app.get("/api/report/download")
-@jwt_required()
+@jwt_required(optional=True)
 def download_report() -> Any:
     try:
         path = global_state.get("report_path")
-        if not path:
-            return jsonify({"error": "Report not generated"}), 404
-        return send_file(path, as_attachment=True)
+        if not path or not os.path.exists(path):
+            from config import REPORT_DIR
+            reports = sorted(list(REPORT_DIR.glob("ArtifactPulse_Report_*.pdf")), key=lambda p: p.stat().st_mtime, reverse=True)
+            if reports:
+                path = str(reports[0])
+            else:
+                return jsonify({"error": "Report not generated yet"}), 404
+        return send_file(path, as_attachment=True, download_name=os.path.basename(path))
     except Exception:
         logger.exception("Report download failed")
         raise

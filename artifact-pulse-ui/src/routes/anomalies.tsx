@@ -53,7 +53,7 @@ function AnomaliesPage() {
     }))
   );
   const ranked = [...anomalyPoints].sort((a, b) => b.score - a.score);
-  if (!selected && ranked.length) setSelected(ranked[0]);
+  if (!selected && ranked.length > 0) setSelected(ranked[0]);
 
   if (isLoading) {
     return (
@@ -67,14 +67,16 @@ function AnomaliesPage() {
     );
   }
 
+  const topScore = ranked.length > 0 ? ranked[0].score.toFixed(2) : "0.00";
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
       <PageHeader title="Anomaly Detection" subtitle="Isolation Forest · KMeans (k=5) · TF-IDF · weighted ensemble" />
 
       <div className="grid gap-4 lg:grid-cols-4">
-        <KpiTile label="Top score" value={ranked[0].score.toFixed(2)} tone="critical" icon={Flame} />
+        <KpiTile label="Top score" value={topScore} tone="critical" icon={Flame} />
         <KpiTile label="Anomalies surfaced" value={String(anomalyPoints.length)} tone="primary" icon={Brain} />
-        <KpiTile label="Clusters" value="5" tone="accent" icon={Brain} />
+        <KpiTile label="Clusters" value={String(clusters.length || 0)} tone="accent" icon={Brain} />
         <KpiTile label="False-positive rate" value="< 5%" tone="primary" icon={Brain} sub="contamination=0.05" />
       </div>
 
