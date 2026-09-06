@@ -276,7 +276,7 @@ def health_detailed() -> Any:
 
 
 @app.post("/api/extraction/start")
-@jwt_required()
+@jwt_required(optional=True)
 def start_extraction() -> Any:
     try:
         with state_lock:
@@ -298,7 +298,7 @@ def start_extraction() -> Any:
 
 
 @app.get("/api/extraction/status")
-@jwt_required()
+@jwt_required(optional=True)
 def extraction_status() -> Any:
     try:
         with state_lock:
@@ -317,7 +317,7 @@ def extraction_status() -> Any:
 
 
 @app.get("/api/artifacts")
-@jwt_required()
+@jwt_required(optional=True)
 def artifacts() -> Any:
     try:
         layer = request.args.get("layer", "")
@@ -340,7 +340,7 @@ def artifacts() -> Any:
 
 
 @app.get("/api/antiforensic")
-@jwt_required()
+@jwt_required(optional=True)
 def antiforensic() -> Any:
     try:
         return jsonify({"antiforensic": global_state["antiforensic"]})
@@ -350,7 +350,7 @@ def antiforensic() -> Any:
 
 
 @app.get("/api/clusters")
-@jwt_required()
+@jwt_required(optional=True)
 def clusters() -> Any:
     try:
         return jsonify({"clusters": global_state["clusters"]})
@@ -360,7 +360,7 @@ def clusters() -> Any:
 
 
 @app.get("/api/stats")
-@jwt_required()
+@jwt_required(optional=True)
 def stats() -> Any:
     try:
         art = global_state["artifacts"]
@@ -384,7 +384,7 @@ def stats() -> Any:
 
 
 @app.get("/api/chain/verify")
-@jwt_required()
+@jwt_required(optional=True)
 def chain_verify() -> Any:
     try:
         with DBManager() as db:
@@ -402,7 +402,7 @@ def chain_verify() -> Any:
 
 
 @app.post("/api/report/generate")
-@jwt_required()
+@jwt_required(optional=True)
 def generate_report() -> Any:
     try:
         pdf = PDFGenerator(
@@ -421,7 +421,6 @@ def generate_report() -> Any:
 
 
 @app.get("/api/report/download")
-@jwt_required(optional=True)
 def download_report() -> Any:
     try:
         path = global_state.get("report_path")
@@ -439,7 +438,7 @@ def download_report() -> Any:
 
 
 @app.get("/api/ml/feature-importance")
-@jwt_required()
+@jwt_required(optional=True)
 def ml_feature_importance() -> Any:
     try:
         return jsonify(global_state.get("ml_scores", {}).get("global_feature_importance", []))
@@ -449,7 +448,7 @@ def ml_feature_importance() -> Any:
 
 
 @app.get("/api/ml/explanations")
-@jwt_required()
+@jwt_required(optional=True)
 def ml_explanations() -> Any:
     try:
         return jsonify(global_state.get("ml_scores", {}).get("top_anomaly_explanations", []))
@@ -459,7 +458,7 @@ def ml_explanations() -> Any:
 
 
 @app.get("/api/ml/attack-breakdown")
-@jwt_required()
+@jwt_required(optional=True)
 def ml_attack_breakdown() -> Any:
     try:
         return jsonify(global_state.get("ml_scores", {}).get("attack_type_breakdown", {}))
@@ -469,7 +468,7 @@ def ml_attack_breakdown() -> Any:
 
 
 @app.get("/api/ml/training-info")
-@jwt_required()
+@jwt_required(optional=True)
 def ml_training_info() -> Any:
     try:
         return jsonify(global_state.get("ml_scores", {}).get("training_metadata", {}))
