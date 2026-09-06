@@ -11,7 +11,8 @@ import threading
 from typing import Any, Dict
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request, send_file
+import requests
+from flask import Flask, jsonify, render_template, request, send_file, Response
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 
@@ -34,33 +35,9 @@ from report.pdf_generator import PDFGenerator
 
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__, static_folder="../artifact-pulse-ui/dist", static_url_path="/")
-
-# ── Security configuration ──────────────────────────────────────────────────
-_jwt_secret = os.environ.get("JWT_SECRET_KEY", "")
-if not _jwt_secret or _jwt_secret == "change-me-generate-a-random-secret":
-    raise RuntimeError(
-        "JWT_SECRET_KEY is not set. Copy .env.example to .env and set a strong secret."
-    )
-app.config["JWT_SECRET_KEY"] = _jwt_secret
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(
-    minutes=int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRES_MINUTES", "60"))
-)
-
-_raw_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
-_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
-CORS(app, origins=_allowed_origins, supports_credentials=True)
-
-jwt = JWTManager(app)
-
-# ── Static File Serving ──────────────────────────────────────────────────────
-@app.route("/", defaults={"path": ""})
-@app.route("/<path:path>")
-def serve_frontend(path: str) -> Any:
-    """Serve the React app's static files, fallback to index.html for SPA routes."""
-    if path != "" and os.path.exists(app.static_folder + "/" + path):
-        return send_file(app.static_folder + "/" + path)
-    return send_file(app.static_folder + "/index.html")
+app = Flask(__name__)
+CORS(app)
+JWTManager(app)
 
 # ── In-process pipeline state ────────────────────────────────────────────────
 global_state: Dict[str, Any] = {
@@ -173,23 +150,75 @@ def _run_pipeline() -> None:
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
-@app.get("/")
-def index() -> str:
+
+# ── Frontend Reverse Proxy ───────────────────────────────────────────────────
+HOP_BY_HOP_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+    "content-encoding",  # requests automatically decodes gzip content
+}
+
+proxy_session = requests.Session()
+proxy_session.trust_env = False  # Avoid routing local loopback traffic through system/external proxy (e.g. 8080)
+
+
+def _proxy_to_frontend(path: str = "") -> Any:
+    # Do not proxy /api routes
+    if path.startswith("api/") or path == "api":
+        return jsonify({"error": "Not found"}), 404
+
+    target_url = f"http://127.0.0.1:3000/{path}"
+    headers = {
+        key: value
+        for key, value in request.headers.items()
+        if key.lower() not in ("host", "content-length")
+    }
+
     try:
-        return render_template("index.html")
-    except Exception:
-        logger.exception("Failed rendering index")
-        raise
+        resp = proxy_session.request(
+            method=request.method,
+            url=target_url,
+            params=request.args,
+            data=request.get_data(),
+            headers=headers,
+            allow_redirects=False,
+            timeout=10,
+        )
+
+        response_headers = [
+            (name, value)
+            for name, value in resp.headers.items()
+            if name.lower() not in HOP_BY_HOP_HEADERS
+        ]
+
+        return Response(
+            response=resp.content,
+            status=resp.status_code,
+            headers=response_headers,
+            content_type=resp.headers.get("content-type"),
+        )
+    except Exception as exc:
+        logger.warning("Frontend proxy request to %s failed: %s", target_url, exc)
+        return jsonify({
+            "error": "Frontend SSR server is currently unavailable on port 3000.",
+            "detail": str(exc),
+        }), 503
 
 
-@app.get("/dashboard")
-def dashboard() -> str:
-    try:
-        return render_template("dashboard.html")
-    except Exception:
-        logger.exception("Failed rendering dashboard")
-        raise
+@app.route("/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+def index() -> Any:
+    return _proxy_to_frontend("")
 
+
+@app.route("/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+def frontend_catchall(path: str) -> Any:
+    return _proxy_to_frontend(path)
 
 @app.get("/api/health")
 def health() -> Any:

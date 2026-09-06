@@ -5,10 +5,13 @@ cd /d "%~dp0"
 
 REM ############################################################
 REM  Artifact-Pulse — one-click launcher
-REM  Starts: Flask API (:5000) + React UI (:5173) + browser
+REM  Starts: Flask API (:5000) + SSR Frontend (:3000) -> unified at :5000
 REM  NOTE: do NOT "set PYTHONPATH=" here — an empty PYTHONPATH
 REM  crashes Python 3.11 with "failed to make path absolute".
 REM ############################################################
+
+set "NO_PROXY=127.0.0.1,localhost"
+set "no_proxy=127.0.0.1,localhost"
 
 echo.
 echo  ============================================
@@ -87,6 +90,11 @@ if errorlevel 1 (
     exit /b 1
 )
 popd
+
+REM ---------- Start Frontend SSR Server ----------
+echo [*] Starting Frontend SSR Server...
+if exist "artifact-pulse-ui\.wrangler" rmdir /s /q "artifact-pulse-ui\.wrangler"
+start "Frontend SSR Server (close to stop)" cmd /k "cd /d %~dp0\artifact-pulse-ui && npx wrangler dev .output/server/index.mjs --port 3000 --ip 127.0.0.1"
 
 REM ---------- Start Flask API ----------
 echo [*] Checking if API is already running on :5000 ...
