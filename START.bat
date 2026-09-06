@@ -32,6 +32,16 @@ if not errorlevel 1 (
         where python3 >nul 2>nul
         if not errorlevel 1 (
             set "PY_CMD=python3"
+        ) else (
+            if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
+                set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+            ) else if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" (
+                set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
+            ) else if exist "%ProgramFiles%\Python312\python.exe" (
+                set "PY_CMD=%ProgramFiles%\Python312\python.exe"
+            ) else if exist "%ProgramFiles%\Python311\python.exe" (
+                set "PY_CMD=%ProgramFiles%\Python311\python.exe"
+            )
         )
     )
 )
