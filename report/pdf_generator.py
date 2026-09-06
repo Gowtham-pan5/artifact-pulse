@@ -31,6 +31,7 @@ from reportlab.platypus import (
 )
 
 from config import CASE_ID, REPORT_DIR, TOOL_VERSION
+from core.privilege_detector import PrivilegeDetector
 
 logger = logging.getLogger(__name__)
 
@@ -286,11 +287,15 @@ class PDFGenerator:
             chain_status = "INTACT (HASH-VERIFIED)" if self.seal.get("chain_integrity") else "INTEGRITY SEALED"
             master_hash = str(self.seal.get("master_hash", "Pending extraction"))
 
+            tier_info = PrivilegeDetector.get_tier_info()
+            tier_badge = "ADMINISTRATOR (FULL IR)" if tier_info["is_admin"] else "USER-SPACE (TRIAGE)"
+
             meta_data = [
                 ["Case Identifier:", CASE_ID, "Investigation Target:", f"{hostname} ({sys.platform})"],
                 ["Tool Version:", f"Artifact-Pulse v{TOOL_VERSION}", "Generation Date:", gen_time],
                 ["Suspicion Score:", f"{score_val} / 100", "Overall Severity:", sev_val],
-                ["Evidence Chain:", chain_status, "Total Artifacts:", str(len(self.artifacts))],
+                ["Acquisition Scope:", tier_badge, "Total Artifacts:", str(len(self.artifacts))],
+                ["Evidence Chain:", chain_status, "Master Hash (Prefix):", f"{master_hash[:16]}..."],
             ]
 
             meta_table = Table(
@@ -312,7 +317,8 @@ class PDFGenerator:
             # ── Section 01: Executive Summary ────────────────────────────────────
             story.append(Paragraph("1. Executive Summary & Triage Disposition", self.style_h1))
             summary_text = (
-                f"Artifact-Pulse conducted a multi-layer digital forensic triage of host <b>{hostname}</b>. "
+                f"Artifact-Pulse conducted a multi-layer digital forensic triage of host <b>{hostname}</b> "
+                f"operating in <b>{tier_info['tier_label']}</b> mode. "
                 f"A total of <b>{len(self.artifacts)} artifacts</b> were extracted across filesystem timestamps, Windows Event Logs, "
                 f"live process table memory states, and registry keys. Machine learning analysis via Isolation Forest, "
                 f"K-Means spatial clustering, and Random Forest ensemble yielded an overall suspicion score of <b>{score_val}/100</b> "

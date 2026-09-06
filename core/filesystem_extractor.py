@@ -123,19 +123,28 @@ class FilesystemExtractor:
         try:
             if not PREFETCH_PATH.exists():
                 return 0
-            for pf in PREFETCH_PATH.glob("*.pf"):
-                exe_name = pf.name.split("-")[0].upper()
-                risk = 0.9 if exe_name in ANTIFORENSIC_TOOLS else 0.3
-                payload = {
-                    "filename": pf.name,
-                    "exe_name": exe_name,
-                    "mtime": datetime.fromtimestamp(pf.stat().st_mtime, tz=UTC).isoformat(),
-                    "size_bytes": pf.stat().st_size,
-                }
-                self.db.insert_artifact(
-                    "filesystem", "prefetch", str(pf), payload, payload["mtime"], risk
-                )
-                count += 1
+            try:
+                pf_files = list(PREFETCH_PATH.glob("*.pf"))
+            except (PermissionError, OSError) as perm_err:
+                logger.info("Prefetch directory requires elevated Administrator privileges (skipped in User Scope): %s", perm_err)
+                return 0
+
+            for pf in pf_files:
+                try:
+                    exe_name = pf.name.split("-")[0].upper()
+                    risk = 0.9 if exe_name in ANTIFORENSIC_TOOLS else 0.3
+                    payload = {
+                        "filename": pf.name,
+                        "exe_name": exe_name,
+                        "mtime": datetime.fromtimestamp(pf.stat().st_mtime, tz=UTC).isoformat(),
+                        "size_bytes": pf.stat().st_size,
+                    }
+                    self.db.insert_artifact(
+                        "filesystem", "prefetch", str(pf), payload, payload["mtime"], risk
+                    )
+                    count += 1
+                except (PermissionError, OSError):
+                    continue
             return count
         except Exception:
             logger.exception("Failed prefetch extraction")

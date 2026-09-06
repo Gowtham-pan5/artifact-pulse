@@ -89,7 +89,13 @@ class ProcessExtractor:
         """Capture network connections with exposure-based risk scoring."""
         count = 0
         try:
-            for conn in psutil.net_connections(kind="all"):
+            try:
+                conns = psutil.net_connections(kind="all")
+            except (psutil.AccessDenied, PermissionError) as perm_err:
+                logger.info("Full network socket enumeration requires elevated privileges (skipped in User Scope): %s", perm_err)
+                return count
+
+            for conn in conns:
                 laddr = str(conn.laddr) if conn.laddr else ""
                 raddr = str(conn.raddr) if conn.raddr else ""
                 status = conn.status or "UNKNOWN"

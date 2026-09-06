@@ -19,6 +19,16 @@ echo    ARTIFACT-PULSE  ^|  Forensic Triage Suite
 echo  ============================================
 echo.
 
+REM ---------- Privilege Tier Check ----------
+net session >nul 2>nul
+if not errorlevel 1 (
+    echo [*] Privilege: ELEVATED ADMINISTRATOR ^(Full Deep Forensic IR Active^)
+) else (
+    echo [*] Privilege: STANDARD USER ^(User-Space Fast Triage Active^)
+    echo     Tip: For Security.evtx ^& System EVTX logs, right-click START.bat -^> 'Run as administrator'
+)
+echo.
+
 REM ---------- Python check ----------
 set "PY_CMD="
 where py >nul 2>nul

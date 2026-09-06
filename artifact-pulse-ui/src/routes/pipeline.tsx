@@ -140,6 +140,22 @@ function PipelinePage() {
         }
       />
 
+      <div className={`rounded-md border p-3 font-mono text-xs ${health?.is_admin ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-300" : "border-amber-500/30 bg-amber-500/5 text-amber-300"}`}>
+        <div className="flex items-center justify-between">
+          <span className="font-bold">
+            {health?.is_admin ? "🛡️ ELEVATED IR SCOPE (ADMINISTRATOR)" : "👤 USER-SPACE TRIAGE SCOPE (STANDARD)"}
+          </span>
+          <span className="text-[10px] text-muted-foreground uppercase">
+            {health?.is_admin ? "All System Layers Unlocked" : "Standard User Mode"}
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {health?.is_admin
+            ? "Full forensic collection active: Security.evtx, System.evtx, PowerShell logs, and System Registry hives."
+            : "User-space collection active: Browser SQLite history, HKCU Registry, User Downloads, and process snapshots. (Run as Admin to unlock Security EVTX logs)"}
+        </p>
+      </div>
+
       <Panel title="Overall Progress" subtitle={`target endpoint: ${hostName} · 7 stages`}>
         <div className="flex items-center gap-4">
           <div className="flex-1">

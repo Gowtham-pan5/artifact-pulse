@@ -150,10 +150,24 @@ const tt = {
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
   const { data: health } = useHealth();
   const caseId = health?.case_id || "AP-2026-0419";
+  const isAdmin = health?.is_admin ?? false;
+  const scopeLabel = isAdmin ? "🛡️ Elevated IR Scope (Full System)" : "👤 User-Space Triage Scope (Standard)";
+  const scopeTone = isAdmin
+    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+    : "border-amber-500/40 bg-amber-500/10 text-amber-400";
+
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-end justify-between gap-3 border-b border-border/60 pb-4">
       <div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary">// {caseId}</div>
+        <div className="flex items-center gap-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary">// {caseId}</div>
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${scopeTone}`}
+            title={health?.elevation_hint || (isAdmin ? "Full administrator privileges active" : "Standard user mode active")}
+          >
+            {scopeLabel}
+          </span>
+        </div>
         <h1 className="mt-1 font-mono text-2xl font-bold tracking-tight md:text-3xl">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
       </div>

@@ -29,6 +29,7 @@ from core.eventlog_extractor import EventLogExtractor
 from core.evidence_sealer import EvidenceSealer
 from core.filesystem_extractor import FilesystemExtractor
 from core.ml_scorer import MLScorer
+from core.privilege_detector import PrivilegeDetector
 from core.process_extractor import ProcessExtractor
 from database.db_manager import DBManager
 from report.pdf_generator import PDFGenerator
@@ -222,9 +223,20 @@ def _proxy_to_frontend(path: str = "") -> Any:
 
 @app.get("/api/health")
 def health() -> Any:
-    """Public health probe — no auth required."""
+    """Public health probe with execution scope and capability metadata — no auth required."""
     try:
-        return jsonify({"status": "ok", "version": TOOL_VERSION, "case_id": CASE_ID})
+        tier_info = PrivilegeDetector.get_tier_info()
+        return jsonify({
+            "status": "ok",
+            "version": TOOL_VERSION,
+            "case_id": CASE_ID,
+            "scope": tier_info["tier"],
+            "is_admin": tier_info["is_admin"],
+            "tier_label": tier_info["tier_label"],
+            "accessible_layers": tier_info["accessible_layers"],
+            "skipped_artifacts": tier_info["skipped_artifacts"],
+            "elevation_hint": tier_info["elevation_hint"],
+        })
     except Exception:
         logger.exception("Health endpoint failed")
         raise
@@ -233,7 +245,7 @@ def health() -> Any:
 @app.get("/api/health/detailed")
 @jwt_required()
 def health_detailed() -> Any:
-    """Detailed liveness check including DB and pipeline state."""
+    """Detailed liveness check including DB, privilege tier, and pipeline state."""
     try:
         db_ok = False
         db_artifact_count = 0
@@ -248,12 +260,14 @@ def health_detailed() -> Any:
             pipeline_stage = global_state["stage"]
             pipeline_running = global_state["running"]
 
+        tier_info = PrivilegeDetector.get_tier_info()
         return jsonify({
             "status": "ok",
             "version": TOOL_VERSION,
             "case_id": CASE_ID,
             "db": {"connected": db_ok, "artifact_count": db_artifact_count},
             "pipeline": {"stage": pipeline_stage, "running": pipeline_running},
+            "privilege": tier_info,
             "timestamp": datetime.now(UTC).isoformat(),
         })
     except Exception:
@@ -350,6 +364,7 @@ def clusters() -> Any:
 def stats() -> Any:
     try:
         art = global_state["artifacts"]
+        tier_info = PrivilegeDetector.get_tier_info()
         return jsonify({
             "layer_breakdown": _layer_breakdown(art),
             "total_artifacts": len(art),
@@ -358,6 +373,10 @@ def stats() -> Any:
             "antiforensic": len(global_state["antiforensic"]),
             "high_risk": len([a for a in art if float(a.get("risk_weight") or 0) >= 0.7]),
             "clusters": len(global_state["clusters"]),
+            "scope": tier_info["tier"],
+            "is_admin": tier_info["is_admin"],
+            "tier_label": tier_info["tier_label"],
+            "elevation_hint": tier_info["elevation_hint"],
         })
     except Exception:
         logger.exception("Stats endpoint failed")

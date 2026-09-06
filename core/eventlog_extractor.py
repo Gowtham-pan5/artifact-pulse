@@ -46,6 +46,15 @@ class EventLogExtractor:
         try:
             if not path.exists():
                 return results
+
+            # Pre-flight read check to handle Windows DACL restrictions gracefully
+            try:
+                with open(path, "rb") as test_f:
+                    test_f.read(32)
+            except (PermissionError, OSError) as perm_err:
+                logger.info("EVTX log %s requires Administrator privileges (skipped in User Scope): %s", path.name, perm_err)
+                return results
+
             with Evtx(str(path)) as log:
                 for idx, record in enumerate(log.records()):
                     if idx >= limit:

@@ -78,7 +78,7 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   // Health / Case Info
-  getHealth: () => fetchJson<{ status: string; version: string; case_id: string }>('/health'),
+  getHealth: () => fetchJson<BackendHealthInfo>('/health'),
 
   // Dashboard / Summary
   getStats: () => fetchJson<{
@@ -90,6 +90,10 @@ export const api = {
     antiforensic: number;
     high_risk: number;
     clusters: number;
+    scope?: string;
+    is_admin?: boolean;
+    tier_label?: string;
+    elevation_hint?: string;
   }>('/stats'),
 
   // Artifacts
@@ -127,6 +131,18 @@ export const api = {
   generateReport: () => fetchJson<{ status: string; path: string }>('/report/generate', { method: 'POST' }),
   downloadReport: () => `${API_BASE}/report/download`,
 };
+
+export interface BackendHealthInfo {
+  status: string;
+  version: string;
+  case_id: string;
+  scope?: string;
+  is_admin?: boolean;
+  tier_label?: string;
+  accessible_layers?: string[];
+  skipped_artifacts?: string[];
+  elevation_hint?: string;
+}
 
 // Type definitions matching backend response shapes
 export interface BackendArtifact {
