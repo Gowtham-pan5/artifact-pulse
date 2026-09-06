@@ -79,8 +79,10 @@ if not exist ".venv\Scripts\python.exe" (
     )
 )
 if not exist ".venv\Lib\site-packages\flask" (
+    echo [*] Upgrading pip and build tools...
+    ".venv\Scripts\python.exe" -m pip install --upgrade pip setuptools wheel --quiet
     echo [*] Installing backend dependencies...
-    ".venv\Scripts\python.exe" -m pip install -r requirements.txt
+    ".venv\Scripts\python.exe" -m pip install --prefer-binary -r requirements.txt
     if errorlevel 1 (
         echo [X] pip install failed.
         pause
