@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { PageHeader, Panel } from "./index";
 import { useHealth } from "../hooks/useApi";
+import { api } from "../lib/api";
 import { pipelineSteps, type PipelineStatus } from "../lib/mockData";
 
 export const Route = createFileRoute("/pipeline")({
@@ -56,9 +57,7 @@ function PipelinePage() {
 
   async function poll() {
     try {
-      const res = await fetch("/api/extraction/status");
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const st = await res.json();
+      const st = await api.getExtractionStatus();
       const activeIdx = STAGE_TO_STEP[st.stage] ?? -1;
       setProgress(st.progress ?? 0);
       setStageMessage(st.message ?? "");
@@ -84,31 +83,29 @@ function PipelinePage() {
         setExpanded(activeIdx);
       }
       if (st.running) pollTimer.current = setTimeout(poll, 2500);
-    } catch (err) {
+    } catch (err: any) {
       setRunning(false);
-      toast.error("Lost connection to backend", { description: String(err) });
+      toast.error("Lost connection to backend", { description: String(err?.message || err) });
     }
   }
 
-  function run() {
+  async function run() {
     reset();
     setRunning(true);
     toast.success("Pipeline started", { description: `target: ${hostName}` });
-    fetch("/api/extraction/start", { method: "POST" })
-      .then(async res => {
-        if (res.status === 409) {
-          toast.info("Pipeline already running", { description: "polling existing run" });
-          poll();
-          return;
-        }
-        if (!res.ok) throw new Error(`start failed: ${res.status}`);
+    try {
+      await api.startExtraction();
+      poll();
+    } catch (err: any) {
+      if (err?.message?.includes("already running") || err?.message?.includes("409")) {
+        toast.info("Pipeline already running", { description: "polling existing run" });
         poll();
-      })
-      .catch(err => {
-        setRunning(false);
-        setStatuses(prev => prev.map(() => "failed"));
-        toast.error("Backend unreachable", { description: `is Flask running on :5000? (${err})` });
-      });
+        return;
+      }
+      setRunning(false);
+      setStatuses(prev => prev.map(() => "failed"));
+      toast.error("Backend unreachable", { description: `is Flask running on :5000? (${err?.message || err})` });
+    }
   }
 
   useEffect(() => () => stopPolling(), []);

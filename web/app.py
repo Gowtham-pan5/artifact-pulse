@@ -37,7 +37,16 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
-JWTManager(app)
+
+_jwt_secret = os.environ.get("JWT_SECRET_KEY", "")
+if not _jwt_secret or _jwt_secret == "change-me-generate-a-random-secret":
+    _jwt_secret = "artifact-pulse-local-forensic-triage-secret-2026"
+
+app.config["JWT_SECRET_KEY"] = _jwt_secret
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(
+    minutes=int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRES_MINUTES", "1440"))
+)
+jwt = JWTManager(app)
 
 # ── In-process pipeline state ────────────────────────────────────────────────
 global_state: Dict[str, Any] = {
@@ -210,15 +219,6 @@ def _proxy_to_frontend(path: str = "") -> Any:
             "detail": str(exc),
         }), 503
 
-
-@app.route("/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-def index() -> Any:
-    return _proxy_to_frontend("")
-
-
-@app.route("/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-def frontend_catchall(path: str) -> Any:
-    return _proxy_to_frontend(path)
 
 @app.get("/api/health")
 def health() -> Any:
@@ -452,6 +452,16 @@ def ml_training_info() -> Any:
     except Exception:
         logger.exception("ML training metadata endpoint failed")
         raise
+
+
+@app.route("/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+def index() -> Any:
+    return _proxy_to_frontend("")
+
+
+@app.route("/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+def frontend_catchall(path: str) -> Any:
+    return _proxy_to_frontend(path)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

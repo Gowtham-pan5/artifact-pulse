@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { FileText, Download, ShieldCheck, ShieldAlert, Plus, Loader2 } from "lucide-react";
 import { PageHeader, Panel } from "./index";
+import { api } from "../lib/api";
 import { reports as seed, type Report } from "../lib/mockData";
 
 export const Route = createFileRoute("/reports")({
@@ -19,24 +20,22 @@ function ReportsPage() {
     setGenerating(true);
     toast.info("Compiling triage report…", { description: "merging artifacts + clusters + ledger" });
     try {
-      const res = await fetch("/api/report/generate", { method: "POST" });
-      if (!res.ok) throw new Error(`generate failed: ${res.status}`);
-      const data = await res.json();
+      const data = await api.generateReport();
       setGeneratedPath(data.path ?? null);
 
       let artifacts = 0;
       let hash = "";
       let caseId = "AP-CURRENT";
       try {
-        const s = await (await fetch("/api/stats")).json();
+        const s = await api.getStats();
         artifacts = s.total_artifacts ?? s.total ?? 0;
       } catch { /* stats unavailable */ }
       try {
-        const c = await (await fetch("/api/chain/verify")).json();
+        const c = await api.verifyChain();
         hash = c.master_hash ?? "";
       } catch { /* chain unavailable */ }
       try {
-        const h = await (await fetch("/api/health")).json();
+        const h = await api.getHealth();
         caseId = h.case_id ?? caseId;
       } catch { /* health unavailable */ }
 
@@ -54,8 +53,8 @@ function ReportsPage() {
       };
       setReports(prev => [r, ...prev]);
       toast.success("Report generated", { description: data.path ?? r.id });
-    } catch (err) {
-      toast.error("Report generation failed", { description: `is Flask running on :5000? (${err})` });
+    } catch (err: any) {
+      toast.error("Report generation failed", { description: `is Flask running on :5000? (${err?.message || err})` });
     } finally {
       setGenerating(false);
     }
