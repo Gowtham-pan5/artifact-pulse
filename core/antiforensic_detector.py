@@ -68,7 +68,8 @@ class AntiForensicDetector:
                     temp = Path(tmp.name)
                 try:
                     temp.write_bytes(c_path.read_bytes())
-                    with sqlite3.connect(temp) as conn:
+                    conn = sqlite3.connect(temp)
+                    try:
                         row = conn.execute("SELECT COUNT(*) FROM urls").fetchone()
                         count = int(row[0]) if row else 0
                         if count < 10:
@@ -80,6 +81,7 @@ class AntiForensicDetector:
                                 str(c_path),
                             )
                             detections += 1
+                    finally:
                         conn.close()
                 finally:
                     try:
